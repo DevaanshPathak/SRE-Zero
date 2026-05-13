@@ -1,0 +1,52 @@
+"""Web timeout misconfiguration task."""
+
+from srezero.services import base_services
+from srezero.tasks.base import CorrectFix, IncidentTask
+
+
+def build_task() -> IncidentTask:
+    services = base_services()
+    web = services["web_server"]
+
+    web.logs = [
+        "WARN request_id=3101 upstream timeout after_ms=1000 dependency=database",
+        "ERROR request_id=3102 path=/api/orders status=504 error=upstream_timeout",
+        "WARN retry exhausted for upstream call dependency=database",
+    ]
+    web.metrics = {
+        "request_rate": 220,
+        "error_rate": 0.08,
+        "p95_latency_ms": 1100,
+        "upstream_timeout_rate": 0.16,
+    }
+    web.config["TIMEOUT_MS"] = 1000
+
+    return IncidentTask(
+        task_id="web_timeout_misconfig",
+        difficulty="hard",
+        alert="Users report intermittent timeouts on the API.",
+        root_cause="web server timeout configuration too low",
+        root_cause_keywords=("web", "timeout", "configuration"),
+        relevant_evidence=("inspect_logs:web_server", "inspect_config:web_server:TIMEOUT_MS"),
+        evidence_descriptions={
+            "inspect_logs:web_server": "Web logs show upstream calls timing out after 1000 ms.",
+            "inspect_config:web_server:TIMEOUT_MS": (
+                "Web TIMEOUT_MS is configured too low for normal upstream latency."
+            ),
+        },
+        correct_fix=CorrectFix(
+            action_type="update_config",
+            service="web_server",
+            key="TIMEOUT_MS",
+            min_numeric_value=3000,
+            fix_keywords=("timeout", "web"),
+        ),
+        services=services,
+        expected_action_pattern=(
+            "inspect_logs(web_server)",
+            "inspect_config(web_server, TIMEOUT_MS)",
+            "update_config(web_server, TIMEOUT_MS, 5000)",
+            "resolve_incident(web server timeout configuration too low, increase web timeout)",
+        ),
+        max_steps=8,
+    )
