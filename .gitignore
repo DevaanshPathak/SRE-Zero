@@ -6,6 +6,7 @@ __pycache__/
 .mypy_cache/
 .coverage
 .env
+notes/
 htmlcov/
 build/
 dist/
