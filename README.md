@@ -4,7 +4,7 @@ SRE-Zero is an early-stage research benchmark for studying reliable tool-using L
 
 The v0.1 repository contains **SRE-Zero Mini**, a small deterministic environment where agents diagnose incidents across simulated `web_server`, `database`, and `cache` services. Agents inspect logs, metrics, status, and config, then apply minimal in-memory remediations under a step budget.
 
-This is early research code. It is intentionally small, safe, and simulation-only. It does not call external LLM APIs, control real infrastructure, or execute arbitrary shell commands.
+This is early research code. It is intentionally small, safe, and simulation-only. It does not control real infrastructure or execute arbitrary shell commands. External LLM APIs are optional and are only called when an LLM baseline is explicitly selected.
 
 ## Research Motivation
 
@@ -47,6 +47,29 @@ Run scripted baseline evaluation:
 python eval/run_eval.py --agent scripted --episodes 5
 ```
 
+Configure optional OpenAI-compatible LLM baselines:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```text
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=...
+```
+
+Run LLM baselines:
+
+```bash
+python eval/run_eval.py --agent prompting --episodes 1
+python eval/run_eval.py --agent react --episodes 1
+python eval/run_eval.py --agent open_source --episodes 1
+python eval/run_eval.py --agent frontier --episodes 1
+```
+
 Run tests and lint:
 
 ```bash
@@ -70,6 +93,19 @@ SRE-Zero Mini v0.1 includes five incident tasks:
 
 - `RandomAgent`: samples action templates with deterministic randomness. It intentionally sometimes emits invalid service names to test environment robustness.
 - `ScriptedExpertAgent`: uses a small task-specific policy table as an approximate upper bound. In v0.1 this policy is allowed to know task solutions, and this limitation is documented in the benchmark notes.
+- `PromptingBaselineAgent`: calls an OpenAI-compatible chat completions endpoint with the current observation and asks for one action.
+- `ReActBaselineAgent`: keeps a compact Thought/Action history across an episode and calls an OpenAI-compatible chat completions endpoint.
+- `OpenSourceLLMBaselineAgent`: prompting profile intended for local or hosted open-source OpenAI-compatible servers.
+- `FrontierLLMBaselineAgent`: ReAct profile intended for hosted frontier models.
+
+## Baseline Checklist
+
+- [ ] Run random baseline: `python eval/run_eval.py --agent random --episodes 5`
+- [ ] Run scripted expert baseline: `python eval/run_eval.py --agent scripted --episodes 5`
+- [ ] Run prompting baseline: `python eval/run_eval.py --agent prompting --episodes 1`
+- [ ] Run ReAct-style baseline: `python eval/run_eval.py --agent react --episodes 1`
+- [ ] Run open-source LLM baseline: `python eval/run_eval.py --agent open_source --episodes 1`
+- [ ] Run frontier model baseline: `python eval/run_eval.py --agent frontier --episodes 1`
 
 ## Roadmap
 
@@ -83,4 +119,3 @@ SRE-Zero Mini v0.1 includes five incident tasks:
 ## Citation
 
 Citation metadata will be added when the benchmark paper draft is available.
-

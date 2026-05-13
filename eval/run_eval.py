@@ -6,7 +6,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Protocol
 
 from rich.console import Console
 from rich.table import Table
@@ -15,25 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from baselines import RandomAgent, ScriptedExpertAgent  # noqa: E402
+from baselines import AGENT_CHOICES, Agent, build_agent  # noqa: E402
 from srezero.env import SREEnv  # noqa: E402
 from srezero.metrics import aggregate_episode_records  # noqa: E402
-from srezero.schemas import Action, Observation  # noqa: E402
 from srezero.task_registry import list_task_ids  # noqa: E402
-
-
-class Agent(Protocol):
-    def reset(self) -> None: ...
-
-    def act(self, observation: Observation) -> Action | str: ...
-
-
-def build_agent(agent_name: str, seed: int) -> Agent:
-    if agent_name == "random":
-        return RandomAgent(seed=seed)
-    if agent_name == "scripted":
-        return ScriptedExpertAgent()
-    raise ValueError(f"Unknown agent {agent_name!r}")
 
 
 def run_episode(task_id: str, agent: Agent, seed: int) -> dict[str, object]:
@@ -64,7 +48,14 @@ def run_episode(task_id: str, agent: Agent, seed: int) -> dict[str, object]:
     }
 
 
-def evaluate(agent_name: str, episodes: int, seed: int) -> dict[str, object]:
+def evaluate(
+    agent_name: str,
+    episodes: int,
+    seed: int,
+    *,
+    model_override: str | None = None,
+    base_url_override: str | None = None,
+) -> dict[str, object]:
     records: list[dict[str, object]] = []
     by_task: dict[str, dict[str, float]] = {}
 
@@ -72,7 +63,12 @@ def evaluate(agent_name: str, episodes: int, seed: int) -> dict[str, object]:
         task_records = []
         for episode_index in range(episodes):
             episode_seed = seed + task_index * 10_000 + episode_index
-            agent = build_agent(agent_name, episode_seed)
+            agent = build_agent(
+                agent_name,
+                episode_seed,
+                model_override=model_override,
+                base_url_override=base_url_override,
+            )
             record = run_episode(task_id=task_id, agent=agent, seed=episode_seed)
             records.append(record)
             task_records.append(record)
@@ -82,6 +78,8 @@ def evaluate(agent_name: str, episodes: int, seed: int) -> dict[str, object]:
         "agent": agent_name,
         "episodes_per_task": episodes,
         "seed": seed,
+        "model_override": model_override,
+        "base_url_override": base_url_override,
         "overall": aggregate_episode_records(records),
         "by_task": by_task,
         "records": records,
@@ -126,13 +124,21 @@ def print_results(results: dict[str, object]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run SRE-Zero Mini evaluations.")
-    parser.add_argument("--agent", choices=["random", "scripted"], default="random")
+    parser.add_argument("--agent", choices=AGENT_CHOICES, default="random")
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--model", default=None, help="Override the .env model for this run.")
+    parser.add_argument("--base-url", default=None, help="Override the .env base URL for this run.")
     parser.add_argument("--output", type=Path, default=Path("eval/example_results.json"))
     args = parser.parse_args()
 
-    results = evaluate(agent_name=args.agent, episodes=args.episodes, seed=args.seed)
+    results = evaluate(
+        agent_name=args.agent,
+        episodes=args.episodes,
+        seed=args.seed,
+        model_override=args.model,
+        base_url_override=args.base_url,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(results, indent=2), encoding="utf-8")
     print_results(results)
@@ -141,4 +147,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

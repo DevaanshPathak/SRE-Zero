@@ -13,20 +13,27 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from baselines import RandomAgent, ScriptedExpertAgent  # noqa: E402
+from baselines import AGENT_CHOICES, build_agent  # noqa: E402
 from srezero.env import SREEnv  # noqa: E402
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a single SRE-Zero episode.")
     parser.add_argument("--task", default="cache_crash")
-    parser.add_argument("--agent", choices=["random", "scripted"], default="scripted")
+    parser.add_argument("--agent", choices=AGENT_CHOICES, default="scripted")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--model", default=None, help="Override the .env model for this run.")
+    parser.add_argument("--base-url", default=None, help="Override the .env base URL for this run.")
     args = parser.parse_args()
 
     env = SREEnv()
     observation = env.reset(task_id=args.task, seed=args.seed)
-    agent = RandomAgent(seed=args.seed) if args.agent == "random" else ScriptedExpertAgent()
+    agent = build_agent(
+        args.agent,
+        args.seed,
+        model_override=args.model,
+        base_url_override=args.base_url,
+    )
     agent.reset()
 
     table = Table(title=f"Episode: {args.task} ({args.agent})")
@@ -55,4 +62,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
