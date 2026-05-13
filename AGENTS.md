@@ -23,6 +23,15 @@ python -m mypy
 python eval/run_eval.py --agent scripted --episodes 1
 ```
 
+For frontend changes, also run:
+
+```bash
+cd frontend
+npm run typecheck
+npm run build
+npm audit --audit-level=moderate
+```
+
 For baseline smoke checks, also run:
 
 ```bash
@@ -35,4 +44,3 @@ Remove temporary smoke result files before committing unless they are intentiona
 ## Local Notes
 
 The `notes/` directory is intentionally ignored. It is for local plots, paper drafts, and blog drafts. Do not force-add it unless the repository policy changes.
-

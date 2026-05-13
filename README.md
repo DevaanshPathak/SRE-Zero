@@ -48,6 +48,16 @@ Run scripted baseline evaluation:
 python eval/run_eval.py --agent scripted --episodes 5
 ```
 
+Run the Next.js frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open `http://localhost:3000`.
+
 Run a difficulty split:
 
 ```bash
@@ -135,6 +145,17 @@ env = SREOpenEnv(task_id="cache_crash")
 obs, info = env.reset(seed=0)
 obs, reward, terminated, truncated, info = env.step("check_status(cache)")
 ```
+
+## Frontend
+
+The `frontend/` directory contains a Next.js console for using SRE-Zero interactively. It provides:
+
+- Task browsing by easy/medium/hard split.
+- Episode reset and session state.
+- Structured action builder and raw action input.
+- Observation details, known findings, reward components, metrics, and trajectory history.
+
+The frontend uses local Next API routes and the deterministic JSON task configs. It does not control real infrastructure.
 
 ## Baseline Agents
 

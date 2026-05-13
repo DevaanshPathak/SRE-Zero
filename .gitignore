@@ -15,3 +15,9 @@ venv/
 env/
 .idea/
 .vscode/
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+frontend/.env*.local
+frontend/*.log
+frontend/tsconfig.tsbuildinfo
