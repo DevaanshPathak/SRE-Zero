@@ -24,6 +24,9 @@ import type {
   ActionType,
   ConfigValue,
   Difficulty,
+  ModelCatalogResponse,
+  ModelCompareResponse,
+  ModelRunResult,
   Observation,
   ResetResponse,
   ServiceName,
@@ -60,6 +63,13 @@ export default function Home() {
   const [observation, setObservation] = useState<Observation | null>(null);
   const [lastInfo, setLastInfo] = useState<StepInfo | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [currentModel, setCurrentModel] = useState<string | null>(null);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [modelA, setModelA] = useState("");
+  const [modelB, setModelB] = useState("");
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareResults, setCompareResults] = useState<ModelRunResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionType, setActionType] = useState<ActionType>("inspect_logs");
@@ -73,6 +83,7 @@ export default function Home() {
 
   useEffect(() => {
     void loadTasks();
+    void loadModels();
   }, []);
 
   useEffect(() => {
@@ -104,6 +115,21 @@ export default function Home() {
     }
   }
 
+  async function loadModels() {
+    try {
+      const data = await requestJson<ModelCatalogResponse>("/api/models");
+      setModels(data.models);
+      setCurrentModel(data.currentModel);
+      setHasApiKey(data.hasApiKey);
+      const first = data.currentModel ?? data.models[0] ?? "";
+      const second = data.models.find((model) => model !== first) ?? "";
+      setModelA(first);
+      setModelB(second);
+    } catch (requestError) {
+      setError(errorText(requestError));
+    }
+  }
+
   async function resetEpisode(taskId = selectedTaskId) {
     setLoading(true);
     setError(null);
@@ -116,6 +142,7 @@ export default function Home() {
       setObservation(data.observation);
       setLastInfo(null);
       setTimeline([]);
+      setCompareResults([]);
       setSelectedTaskId(taskId);
       setRawAction("");
     } catch (requestError) {
@@ -157,6 +184,31 @@ export default function Home() {
       setError(errorText(requestError));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function runModelCompare() {
+    if (!selectedTaskId || !modelA || !modelB) {
+      setError("Choose a task and two models before running a comparison.");
+      return;
+    }
+    setCompareLoading(true);
+    setError(null);
+    setCompareResults([]);
+    try {
+      const data = await requestJson<ModelCompareResponse>("/api/baseline/compare", {
+        method: "POST",
+        body: JSON.stringify({
+          taskId: selectedTaskId,
+          modelA,
+          modelB
+        })
+      });
+      setCompareResults(data.results);
+    } catch (requestError) {
+      setError(errorText(requestError));
+    } finally {
+      setCompareLoading(false);
     }
   }
 
@@ -411,6 +463,60 @@ export default function Home() {
         <aside className="rightRail">
           <section className="panel">
             <div className="panelHeader">
+              <Bot size={18} />
+              <h2>Model Baselines</h2>
+            </div>
+            <div className="modelPanel">
+              <div className="modelStatus">
+                <span>{models.length} models</span>
+                <span>{hasApiKey ? "API key loaded" : "API key missing"}</span>
+                <span>Default: {currentModel ?? "unset"}</span>
+              </div>
+              <label>
+                Model A
+                <select value={modelA} onChange={(event) => setModelA(event.target.value)}>
+                  {models.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Model B
+                <select value={modelB} onChange={(event) => setModelB(event.target.value)}>
+                  {models.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="primaryButton fullWidth"
+                type="button"
+                disabled={compareLoading || !modelA || !modelB || modelA === modelB}
+                onClick={() => void runModelCompare()}
+              >
+                <Play size={16} />
+                {compareLoading ? "Running..." : "Compare on Task"}
+              </button>
+              {compareResults.length ? (
+                <div className="compareList">
+                  {compareResults.map((result) => (
+                    <ModelResult key={result.model} result={result} />
+                  ))}
+                </div>
+              ) : (
+                <p className="emptyText compact">
+                  Runs one prompting baseline episode per selected model on the current task.
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panelHeader">
               <Gauge size={18} />
               <h2>Metrics</h2>
             </div>
@@ -460,6 +566,25 @@ export default function Home() {
         </aside>
       </section>
     </main>
+  );
+}
+
+function ModelResult({ result }: { result: ModelRunResult }) {
+  return (
+    <div className={result.error ? "modelResult failed" : "modelResult"}>
+      <div className="modelResultHeader">
+        <strong>{result.model}</strong>
+        <span className={result.success ? "statusPill success" : "statusPill done"}>
+          {result.success ? "resolved" : "not resolved"}
+        </span>
+      </div>
+      <Metric label="Reward" value={result.finalReward.toFixed(3)} />
+      <Metric label="Steps" value={String(result.totalSteps)} />
+      <Metric label="Invalid" value={String(result.invalidActions)} />
+      <Metric label="Evidence" value={`${Math.round(result.evidenceCoverage * 100)}%`} />
+      {result.terminalReason ? <p>{result.terminalReason}</p> : null}
+      {result.error ? <p className="modelError">{result.error}</p> : null}
+    </div>
   );
 }
 
@@ -592,4 +717,3 @@ function shortId(value: string): string {
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-

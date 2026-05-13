@@ -399,6 +399,10 @@ button:focus-visible {
   background: var(--soft);
 }
 
+.fullWidth {
+  width: 100%;
+}
+
 .resultSummary {
   padding: 14px 16px;
   font-weight: 700;
@@ -419,9 +423,74 @@ button:focus-visible {
 }
 
 .metricStack,
+.modelPanel,
 .findingList,
 .timeline {
   padding: 12px 16px 16px;
+}
+
+.modelPanel {
+  display: grid;
+  gap: 12px;
+}
+
+.modelStatus {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.modelStatus span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.compareList {
+  display: grid;
+  gap: 10px;
+}
+
+.modelResult {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+  padding: 10px;
+}
+
+.modelResult.failed {
+  border-color: #efb4a9;
+}
+
+.modelResultHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-bottom: 6px;
+}
+
+.modelResultHeader strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.modelResult p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.modelResult .metric,
+.modelResult .rewardRow {
+  font-size: 0.8rem;
+}
+
+.modelError {
+  color: var(--red) !important;
 }
 
 .metric,
@@ -474,6 +543,11 @@ button:focus-visible {
   padding: 16px;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.emptyText.compact {
+  padding: 0;
+  font-size: 0.84rem;
 }
 
 .timeline {
@@ -605,4 +679,3 @@ button:focus-visible {
     flex-direction: column;
   }
 }
-

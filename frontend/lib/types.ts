@@ -102,3 +102,26 @@ export interface TimelineItem {
   error?: string | null;
 }
 
+export interface ModelCatalogResponse {
+  models: string[];
+  currentModel: string | null;
+  hasApiKey: boolean;
+}
+
+export interface ModelRunResult {
+  model: string;
+  success: boolean;
+  finalReward: number;
+  totalSteps: number;
+  invalidActions: number;
+  evidenceCoverage: number;
+  terminalReason?: string | null;
+  error?: string | null;
+  trajectory: TimelineItem[];
+}
+
+export interface ModelCompareResponse {
+  taskId: string;
+  results: ModelRunResult[];
+}
+

@@ -32,6 +32,13 @@ npm run build
 npm audit --audit-level=moderate
 ```
 
+Startup scripts:
+
+```bash
+./start-backend.sh
+./start-frontend.sh
+```
+
 For baseline smoke checks, also run:
 
 ```bash

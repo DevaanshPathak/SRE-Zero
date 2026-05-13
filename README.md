@@ -51,12 +51,18 @@ python eval/run_eval.py --agent scripted --episodes 5
 Run the Next.js frontend:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+./start-frontend.sh
 ```
 
 Then open `http://localhost:3000`.
+
+Run the optional Python HTTP backend:
+
+```bash
+./start-backend.sh
+```
+
+The backend listens on `http://127.0.0.1:8000` by default and exposes `/health`, `/tasks`, `/episode/reset`, and `/episode/step`.
 
 Run a difficulty split:
 
@@ -154,8 +160,14 @@ The `frontend/` directory contains a Next.js console for using SRE-Zero interact
 - Episode reset and session state.
 - Structured action builder and raw action input.
 - Observation details, known findings, reward components, metrics, and trajectory history.
+- Model selection from `OPENAI_MODEL` plus local `notes/available_models.md`.
+- Side-by-side prompting baseline comparison for two selected OpenAI-compatible models.
 
 The frontend uses local Next API routes and the deterministic JSON task configs. It does not control real infrastructure.
+
+Model comparison requires `.env` with `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`. The API key is read server-side only and is not returned to the browser.
+
+The root `start-frontend.sh` script starts the Next dev server. The root `start-backend.sh` script starts a lightweight Python stdlib backend for API experimentation.
 
 ## Baseline Agents
 

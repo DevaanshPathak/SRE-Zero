@@ -35,7 +35,9 @@ class LLMConfig:
 
         profile_prefix = f"SREZERO_{profile.upper()}"
         model = model_override or _env_first(f"{profile_prefix}_MODEL", "OPENAI_MODEL")
-        base_url = base_url_override or _env_first(f"{profile_prefix}_BASE_URL", "OPENAI_BASE_URL")
+        base_url = _normalize_base_url(
+            base_url_override or _env_first(f"{profile_prefix}_BASE_URL", "OPENAI_BASE_URL")
+        )
         api_key = _env_first(f"{profile_prefix}_API_KEY", "OPENAI_API_KEY")
         temperature = _float_env("SREZERO_LLM_TEMPERATURE", default=0.0)
         timeout_seconds = _float_env("SREZERO_LLM_TIMEOUT_SECONDS", default=60.0)
@@ -143,8 +145,15 @@ def _float_env(key: str, *, default: float) -> float:
         raise ValueError(f"{key} must be a float, got {value!r}") from exc
 
 
+def _normalize_base_url(base_url: str) -> str:
+    if not base_url:
+        return base_url
+    if base_url.startswith(("http://", "https://")):
+        return base_url
+    return f"https://{base_url}"
+
+
 def _strip_quotes(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         return value[1:-1]
     return value
-
