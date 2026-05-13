@@ -18,7 +18,7 @@ Describe services, observations, action space, simulator state, episode terminat
 
 ## Task Suite
 
-Define task design principles, v0.1 tasks, difficulty levels, distractors, and determinism.
+Define task design principles, the 15 deterministic v0.1 tasks, difficulty splits, distractors, and config schema.
 
 ## Metrics
 
@@ -47,4 +47,3 @@ Discuss simulator simplicity, small task count, scripted policies, lack of real 
 ## Conclusion
 
 Summarize the benchmark direction and planned extensions.
-

@@ -1,0 +1,54 @@
+{
+  "task_id": "cache_eviction_storm",
+  "difficulty": "medium",
+  "alert": "Product pages are intermittently slow and cache evictions are spiking.",
+  "root_cause": "cache eviction storm due to low memory",
+  "root_cause_keywords": ["cache", "eviction", "memory"],
+  "relevant_evidence": [
+    "inspect_logs:cache",
+    "inspect_metrics:cache",
+    "inspect_config:cache:MAX_MEMORY_MB"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:cache": "Cache logs show repeated eviction storms.",
+    "inspect_metrics:cache": "Cache metrics show high evictions and degraded hit rate.",
+    "inspect_config:cache:MAX_MEMORY_MB": "Cache memory limit is below the working set."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "cache",
+    "key": "MAX_MEMORY_MB",
+    "min_numeric_value": 1024,
+    "fix_keywords": ["cache", "memory"]
+  },
+  "service_patches": {
+    "cache": {
+      "logs": [
+        "WARN eviction storm namespace=products evicted_keys=32000",
+        "WARN allocator pressure high memory_used_pct=99"
+      ],
+      "metrics": {
+        "hit_rate": 0.44,
+        "p95_latency_ms": 30,
+        "memory_used_pct": 99,
+        "evictions_per_min": 32000
+      },
+      "config": {
+        "MAX_MEMORY_MB": 384
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(cache)",
+    "inspect_metrics(cache)",
+    "inspect_config(cache, MAX_MEMORY_MB)",
+    "update_config(cache, MAX_MEMORY_MB, 1024)",
+    "resolve_incident(cache eviction storm due to low memory, increase cache memory)"
+  ],
+  "distractors": [],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

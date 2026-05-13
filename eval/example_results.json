@@ -1,11 +1,14 @@
 {
   "agent": "scripted",
-  "episodes_per_task": 5,
+  "episodes_per_task": 1,
   "seed": 0,
+  "model_override": null,
+  "base_url_override": null,
+  "difficulty": null,
   "overall": {
     "success_rate": 1.0,
-    "mean_reward": 0.9450000000000001,
-    "mean_steps": 4.4,
+    "mean_reward": 0.9455555555555556,
+    "mean_steps": 4.466666666666667,
     "invalid_action_rate": 0.0,
     "evidence_coverage": 1.0,
     "wrong_remediation_rate": 0.0,
@@ -21,7 +24,16 @@
       "wrong_remediation_rate": 0.0,
       "premature_resolution_rate": 0.0
     },
-    "db_pool_exhaustion": {
+    "web_worker_crash": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9375,
+      "mean_steps": 5,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "database_disk_full": {
       "success_rate": 1.0,
       "mean_reward": 0.9500000000000001,
       "mean_steps": 4,
@@ -30,7 +42,16 @@
       "wrong_remediation_rate": 0.0,
       "premature_resolution_rate": 0.0
     },
-    "web_timeout_misconfig": {
+    "cache_memory_pressure": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9500000000000001,
+      "mean_steps": 4,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "db_pool_exhaustion": {
       "success_rate": 1.0,
       "mean_reward": 0.9500000000000001,
       "mean_steps": 4,
@@ -48,9 +69,81 @@
       "wrong_remediation_rate": 0.0,
       "premature_resolution_rate": 0.0
     },
+    "db_slow_queries_missing_index": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9500000000000001,
+      "mean_steps": 4,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "web_worker_saturation": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9500000000000001,
+      "mean_steps": 4,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "cache_eviction_storm": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9375,
+      "mean_steps": 5,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "db_query_timeout_low": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9500000000000001,
+      "mean_steps": 4,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "web_timeout_misconfig": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9500000000000001,
+      "mean_steps": 4,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
     "misleading_web_500_db_rootcause": {
       "success_rate": 1.0,
       "mean_reward": 0.9375,
+      "mean_steps": 5,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "web_cache_host_misconfig": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9444444444444444,
+      "mean_steps": 5,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "cascading_db_latency": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9444444444444444,
+      "mean_steps": 5,
+      "invalid_action_rate": 0.0,
+      "evidence_coverage": 1.0,
+      "wrong_remediation_rate": 0.0,
+      "premature_resolution_rate": 0.0
+    },
+    "cache_disabled_config_regression": {
+      "success_rate": 1.0,
+      "mean_reward": 0.9444444444444444,
       "mean_steps": 5,
       "invalid_action_rate": 0.0,
       "evidence_coverage": 1.0,
@@ -107,7 +200,7 @@
       ]
     },
     {
-      "task_id": "cache_crash",
+      "task_id": "web_worker_crash",
       "metrics": {
         "total_steps": 5,
         "invalid_actions": 0,
@@ -123,38 +216,284 @@
       "trajectory": [
         {
           "step": 1,
-          "action": "check_status(cache)",
+          "action": "check_status(web_server)",
           "reward": 0.06666666666666667,
-          "summary": "cache status is crashed."
+          "summary": "web_server status is degraded."
         },
         {
           "step": 2,
-          "action": "inspect_logs(cache)",
+          "action": "inspect_logs(web_server)",
           "reward": 0.06666666666666667,
-          "summary": "Inspected logs for cache."
+          "summary": "Inspected logs for web_server."
         },
         {
           "step": 3,
-          "action": "inspect_metrics(cache)",
+          "action": "inspect_metrics(web_server)",
           "reward": 0.06666666666666668,
-          "summary": "Inspected metrics for cache."
+          "summary": "Inspected metrics for web_server."
         },
         {
           "step": 4,
-          "action": "restart_service(cache)",
+          "action": "restart_service(web_server)",
           "reward": 0.25,
-          "summary": "Restarted cache."
+          "summary": "Restarted web_server."
         },
         {
           "step": 5,
-          "action": "resolve_incident(cache service crashed, restart cache service)",
+          "action": "resolve_incident(web server worker process crashed, restart web server)",
           "reward": 0.4875,
           "summary": "Incident resolved."
         }
       ]
     },
     {
-      "task_id": "cache_crash",
+      "task_id": "database_disk_full",
+      "metrics": {
+        "total_steps": 4,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9500000000000001
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_logs(database)",
+          "reward": 0.1,
+          "summary": "Inspected logs for database."
+        },
+        {
+          "step": 2,
+          "action": "inspect_metrics(database)",
+          "reward": 0.1,
+          "summary": "Inspected metrics for database."
+        },
+        {
+          "step": 3,
+          "action": "update_config(database, DISK_QUOTA_GB, 200)",
+          "reward": 0.25,
+          "summary": "Updated database config DISK_QUOTA_GB."
+        },
+        {
+          "step": 4,
+          "action": "resolve_incident(database disk is full, increase database disk quota)",
+          "reward": 0.5,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "cache_memory_pressure",
+      "metrics": {
+        "total_steps": 4,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9500000000000001
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_metrics(cache)",
+          "reward": 0.1,
+          "summary": "Inspected metrics for cache."
+        },
+        {
+          "step": 2,
+          "action": "inspect_config(cache, MAX_MEMORY_MB)",
+          "reward": 0.1,
+          "summary": "Inspected config for cache."
+        },
+        {
+          "step": 3,
+          "action": "update_config(cache, MAX_MEMORY_MB, 1024)",
+          "reward": 0.25,
+          "summary": "Updated cache config MAX_MEMORY_MB."
+        },
+        {
+          "step": 4,
+          "action": "resolve_incident(cache memory limit is too low, increase cache memory limit)",
+          "reward": 0.5,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "db_pool_exhaustion",
+      "metrics": {
+        "total_steps": 4,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9500000000000001
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_logs(web_server)",
+          "reward": 0.1,
+          "summary": "Inspected logs for web_server."
+        },
+        {
+          "step": 2,
+          "action": "inspect_metrics(database)",
+          "reward": 0.1,
+          "summary": "Inspected metrics for database."
+        },
+        {
+          "step": 3,
+          "action": "update_config(database, DB_POOL_SIZE, 100)",
+          "reward": 0.25,
+          "summary": "Updated database config DB_POOL_SIZE."
+        },
+        {
+          "step": 4,
+          "action": "resolve_incident(database connection pool exhaustion, increase database pool size)",
+          "reward": 0.5,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "cache_latency_degradation",
+      "metrics": {
+        "total_steps": 4,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9500000000000001
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_metrics(cache)",
+          "reward": 0.1,
+          "summary": "Inspected metrics for cache."
+        },
+        {
+          "step": 2,
+          "action": "inspect_config(cache, TTL_SECONDS)",
+          "reward": 0.1,
+          "summary": "Inspected config for cache."
+        },
+        {
+          "step": 3,
+          "action": "update_config(cache, TTL_SECONDS, 300)",
+          "reward": 0.25,
+          "summary": "Updated cache config TTL_SECONDS."
+        },
+        {
+          "step": 4,
+          "action": "resolve_incident(cache TTL config too low, increase cache TTL)",
+          "reward": 0.5,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "db_slow_queries_missing_index",
+      "metrics": {
+        "total_steps": 4,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9500000000000001
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_logs(database)",
+          "reward": 0.1,
+          "summary": "Inspected logs for database."
+        },
+        {
+          "step": 2,
+          "action": "inspect_metrics(database)",
+          "reward": 0.1,
+          "summary": "Inspected metrics for database."
+        },
+        {
+          "step": 3,
+          "action": "update_config(database, INDEX_ORDERS_USER_ID, True)",
+          "reward": 0.25,
+          "summary": "Updated database config INDEX_ORDERS_USER_ID."
+        },
+        {
+          "step": 4,
+          "action": "resolve_incident(database missing index causing slow queries, add database index)",
+          "reward": 0.5,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "web_worker_saturation",
+      "metrics": {
+        "total_steps": 4,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9500000000000001
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_metrics(web_server)",
+          "reward": 0.1,
+          "summary": "Inspected metrics for web_server."
+        },
+        {
+          "step": 2,
+          "action": "inspect_config(web_server, MAX_WORKERS)",
+          "reward": 0.1,
+          "summary": "Inspected config for web_server."
+        },
+        {
+          "step": 3,
+          "action": "update_config(web_server, MAX_WORKERS, 32)",
+          "reward": 0.25,
+          "summary": "Updated web_server config MAX_WORKERS."
+        },
+        {
+          "step": 4,
+          "action": "resolve_incident(web server worker pool too small, increase web worker pool)",
+          "reward": 0.5,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "cache_eviction_storm",
       "metrics": {
         "total_steps": 5,
         "invalid_actions": 0,
@@ -170,38 +509,167 @@
       "trajectory": [
         {
           "step": 1,
-          "action": "check_status(cache)",
-          "reward": 0.06666666666666667,
-          "summary": "cache status is crashed."
-        },
-        {
-          "step": 2,
           "action": "inspect_logs(cache)",
           "reward": 0.06666666666666667,
           "summary": "Inspected logs for cache."
         },
         {
-          "step": 3,
+          "step": 2,
           "action": "inspect_metrics(cache)",
-          "reward": 0.06666666666666668,
+          "reward": 0.06666666666666667,
           "summary": "Inspected metrics for cache."
         },
         {
+          "step": 3,
+          "action": "inspect_config(cache, MAX_MEMORY_MB)",
+          "reward": 0.06666666666666668,
+          "summary": "Inspected config for cache."
+        },
+        {
           "step": 4,
-          "action": "restart_service(cache)",
+          "action": "update_config(cache, MAX_MEMORY_MB, 1024)",
           "reward": 0.25,
-          "summary": "Restarted cache."
+          "summary": "Updated cache config MAX_MEMORY_MB."
         },
         {
           "step": 5,
-          "action": "resolve_incident(cache service crashed, restart cache service)",
+          "action": "resolve_incident(cache eviction storm due to low memory, increase cache memory)",
           "reward": 0.4875,
           "summary": "Incident resolved."
         }
       ]
     },
     {
-      "task_id": "cache_crash",
+      "task_id": "db_query_timeout_low",
+      "metrics": {
+        "total_steps": 4,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9500000000000001
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_logs(database)",
+          "reward": 0.1,
+          "summary": "Inspected logs for database."
+        },
+        {
+          "step": 2,
+          "action": "inspect_config(database, QUERY_TIMEOUT_MS)",
+          "reward": 0.1,
+          "summary": "Inspected config for database."
+        },
+        {
+          "step": 3,
+          "action": "update_config(database, QUERY_TIMEOUT_MS, 5000)",
+          "reward": 0.25,
+          "summary": "Updated database config QUERY_TIMEOUT_MS."
+        },
+        {
+          "step": 4,
+          "action": "resolve_incident(database query timeout configuration too low, increase database query timeout)",
+          "reward": 0.5,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "web_timeout_misconfig",
+      "metrics": {
+        "total_steps": 4,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9500000000000001
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_logs(web_server)",
+          "reward": 0.1,
+          "summary": "Inspected logs for web_server."
+        },
+        {
+          "step": 2,
+          "action": "inspect_config(web_server, TIMEOUT_MS)",
+          "reward": 0.1,
+          "summary": "Inspected config for web_server."
+        },
+        {
+          "step": 3,
+          "action": "update_config(web_server, TIMEOUT_MS, 5000)",
+          "reward": 0.25,
+          "summary": "Updated web_server config TIMEOUT_MS."
+        },
+        {
+          "step": 4,
+          "action": "resolve_incident(web server timeout configuration too low, increase web timeout)",
+          "reward": 0.5,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "misleading_web_500_db_rootcause",
+      "metrics": {
+        "total_steps": 5,
+        "invalid_actions": 0,
+        "repeated_actions": 0,
+        "evidence_actions": 2,
+        "remediation_actions": 1,
+        "wrong_remediations": 0,
+        "premature_resolutions": 0,
+        "success": true,
+        "final_reward": 0.9375
+      },
+      "evidence_coverage": 1.0,
+      "trajectory": [
+        {
+          "step": 1,
+          "action": "inspect_logs(web_server)",
+          "reward": 0.1,
+          "summary": "Inspected logs for web_server."
+        },
+        {
+          "step": 2,
+          "action": "inspect_metrics(database)",
+          "reward": 0.1,
+          "summary": "Inspected metrics for database."
+        },
+        {
+          "step": 3,
+          "action": "inspect_config(database, DB_POOL_SIZE)",
+          "reward": 0.0,
+          "summary": "Inspected config for database."
+        },
+        {
+          "step": 4,
+          "action": "update_config(database, DB_POOL_SIZE, 150)",
+          "reward": 0.25,
+          "summary": "Updated database config DB_POOL_SIZE."
+        },
+        {
+          "step": 5,
+          "action": "resolve_incident(database saturation causing web failures, increase database pool size)",
+          "reward": 0.4875,
+          "summary": "Incident resolved."
+        }
+      ]
+    },
+    {
+      "task_id": "web_cache_host_misconfig",
       "metrics": {
         "total_steps": 5,
         "invalid_actions": 0,
@@ -211,21 +679,21 @@
         "wrong_remediations": 0,
         "premature_resolutions": 0,
         "success": true,
-        "final_reward": 0.9375
+        "final_reward": 0.9444444444444444
       },
       "evidence_coverage": 1.0,
       "trajectory": [
         {
           "step": 1,
-          "action": "check_status(cache)",
+          "action": "inspect_logs(web_server)",
           "reward": 0.06666666666666667,
-          "summary": "cache status is crashed."
+          "summary": "Inspected logs for web_server."
         },
         {
           "step": 2,
-          "action": "inspect_logs(cache)",
+          "action": "inspect_config(web_server, CACHE_HOST)",
           "reward": 0.06666666666666667,
-          "summary": "Inspected logs for cache."
+          "summary": "Inspected config for web_server."
         },
         {
           "step": 3,
@@ -235,20 +703,20 @@
         },
         {
           "step": 4,
-          "action": "restart_service(cache)",
+          "action": "update_config(web_server, CACHE_HOST, cache.internal)",
           "reward": 0.25,
-          "summary": "Restarted cache."
+          "summary": "Updated web_server config CACHE_HOST."
         },
         {
           "step": 5,
-          "action": "resolve_incident(cache service crashed, restart cache service)",
-          "reward": 0.4875,
+          "action": "resolve_incident(web server cache host configuration is wrong, update web cache host)",
+          "reward": 0.4944444444444444,
           "summary": "Incident resolved."
         }
       ]
     },
     {
-      "task_id": "cache_crash",
+      "task_id": "cascading_db_latency",
       "metrics": {
         "total_steps": 5,
         "invalid_actions": 0,
@@ -258,888 +726,85 @@
         "wrong_remediations": 0,
         "premature_resolutions": 0,
         "success": true,
-        "final_reward": 0.9375
+        "final_reward": 0.9444444444444444
       },
       "evidence_coverage": 1.0,
       "trajectory": [
         {
           "step": 1,
-          "action": "check_status(cache)",
+          "action": "inspect_metrics(web_server)",
           "reward": 0.06666666666666667,
-          "summary": "cache status is crashed."
+          "summary": "Inspected metrics for web_server."
         },
         {
           "step": 2,
-          "action": "inspect_logs(cache)",
+          "action": "inspect_metrics(database)",
           "reward": 0.06666666666666667,
-          "summary": "Inspected logs for cache."
+          "summary": "Inspected metrics for database."
         },
         {
           "step": 3,
-          "action": "inspect_metrics(cache)",
+          "action": "inspect_logs(database)",
           "reward": 0.06666666666666668,
-          "summary": "Inspected metrics for cache."
+          "summary": "Inspected logs for database."
         },
         {
           "step": 4,
-          "action": "restart_service(cache)",
+          "action": "update_config(database, READ_REPLICA_ENABLED, True)",
           "reward": 0.25,
-          "summary": "Restarted cache."
+          "summary": "Updated database config READ_REPLICA_ENABLED."
         },
         {
           "step": 5,
-          "action": "resolve_incident(cache service crashed, restart cache service)",
-          "reward": 0.4875,
+          "action": "resolve_incident(database read latency causing cascading service latency, enable database read replica)",
+          "reward": 0.4944444444444444,
           "summary": "Incident resolved."
         }
       ]
     },
     {
-      "task_id": "db_pool_exhaustion",
+      "task_id": "cache_disabled_config_regression",
       "metrics": {
-        "total_steps": 4,
+        "total_steps": 5,
         "invalid_actions": 0,
         "repeated_actions": 0,
-        "evidence_actions": 2,
+        "evidence_actions": 3,
         "remediation_actions": 1,
         "wrong_remediations": 0,
         "premature_resolutions": 0,
         "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "update_config(database, DB_POOL_SIZE, 100)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(database connection pool exhaustion, increase database pool size)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "db_pool_exhaustion",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "update_config(database, DB_POOL_SIZE, 100)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(database connection pool exhaustion, increase database pool size)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "db_pool_exhaustion",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "update_config(database, DB_POOL_SIZE, 100)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(database connection pool exhaustion, increase database pool size)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "db_pool_exhaustion",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "update_config(database, DB_POOL_SIZE, 100)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(database connection pool exhaustion, increase database pool size)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "db_pool_exhaustion",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "update_config(database, DB_POOL_SIZE, 100)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(database connection pool exhaustion, increase database pool size)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "web_timeout_misconfig",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(web_server, TIMEOUT_MS)",
-          "reward": 0.1,
-          "summary": "Inspected config for web_server."
-        },
-        {
-          "step": 3,
-          "action": "update_config(web_server, TIMEOUT_MS, 5000)",
-          "reward": 0.25,
-          "summary": "Updated web_server config TIMEOUT_MS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(web server timeout configuration too low, increase web timeout)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "web_timeout_misconfig",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(web_server, TIMEOUT_MS)",
-          "reward": 0.1,
-          "summary": "Inspected config for web_server."
-        },
-        {
-          "step": 3,
-          "action": "update_config(web_server, TIMEOUT_MS, 5000)",
-          "reward": 0.25,
-          "summary": "Updated web_server config TIMEOUT_MS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(web server timeout configuration too low, increase web timeout)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "web_timeout_misconfig",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(web_server, TIMEOUT_MS)",
-          "reward": 0.1,
-          "summary": "Inspected config for web_server."
-        },
-        {
-          "step": 3,
-          "action": "update_config(web_server, TIMEOUT_MS, 5000)",
-          "reward": 0.25,
-          "summary": "Updated web_server config TIMEOUT_MS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(web server timeout configuration too low, increase web timeout)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "web_timeout_misconfig",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(web_server, TIMEOUT_MS)",
-          "reward": 0.1,
-          "summary": "Inspected config for web_server."
-        },
-        {
-          "step": 3,
-          "action": "update_config(web_server, TIMEOUT_MS, 5000)",
-          "reward": 0.25,
-          "summary": "Updated web_server config TIMEOUT_MS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(web server timeout configuration too low, increase web timeout)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "web_timeout_misconfig",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(web_server, TIMEOUT_MS)",
-          "reward": 0.1,
-          "summary": "Inspected config for web_server."
-        },
-        {
-          "step": 3,
-          "action": "update_config(web_server, TIMEOUT_MS, 5000)",
-          "reward": 0.25,
-          "summary": "Updated web_server config TIMEOUT_MS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(web server timeout configuration too low, increase web timeout)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "cache_latency_degradation",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
+        "final_reward": 0.9444444444444444
       },
       "evidence_coverage": 1.0,
       "trajectory": [
         {
           "step": 1,
           "action": "inspect_metrics(cache)",
-          "reward": 0.1,
+          "reward": 0.06666666666666667,
           "summary": "Inspected metrics for cache."
         },
         {
           "step": 2,
-          "action": "inspect_config(cache, TTL_SECONDS)",
-          "reward": 0.1,
-          "summary": "Inspected config for cache."
-        },
-        {
-          "step": 3,
-          "action": "update_config(cache, TTL_SECONDS, 300)",
-          "reward": 0.25,
-          "summary": "Updated cache config TTL_SECONDS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(cache hit rate degraded due to wrong cache TTL config, increase cache TTL)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "cache_latency_degradation",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_metrics(cache)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for cache."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(cache, TTL_SECONDS)",
-          "reward": 0.1,
-          "summary": "Inspected config for cache."
-        },
-        {
-          "step": 3,
-          "action": "update_config(cache, TTL_SECONDS, 300)",
-          "reward": 0.25,
-          "summary": "Updated cache config TTL_SECONDS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(cache hit rate degraded due to wrong cache TTL config, increase cache TTL)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "cache_latency_degradation",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_metrics(cache)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for cache."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(cache, TTL_SECONDS)",
-          "reward": 0.1,
-          "summary": "Inspected config for cache."
-        },
-        {
-          "step": 3,
-          "action": "update_config(cache, TTL_SECONDS, 300)",
-          "reward": 0.25,
-          "summary": "Updated cache config TTL_SECONDS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(cache hit rate degraded due to wrong cache TTL config, increase cache TTL)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "cache_latency_degradation",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_metrics(cache)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for cache."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(cache, TTL_SECONDS)",
-          "reward": 0.1,
-          "summary": "Inspected config for cache."
-        },
-        {
-          "step": 3,
-          "action": "update_config(cache, TTL_SECONDS, 300)",
-          "reward": 0.25,
-          "summary": "Updated cache config TTL_SECONDS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(cache hit rate degraded due to wrong cache TTL config, increase cache TTL)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "cache_latency_degradation",
-      "metrics": {
-        "total_steps": 4,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9500000000000001
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_metrics(cache)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for cache."
-        },
-        {
-          "step": 2,
-          "action": "inspect_config(cache, TTL_SECONDS)",
-          "reward": 0.1,
-          "summary": "Inspected config for cache."
-        },
-        {
-          "step": 3,
-          "action": "update_config(cache, TTL_SECONDS, 300)",
-          "reward": 0.25,
-          "summary": "Updated cache config TTL_SECONDS."
-        },
-        {
-          "step": 4,
-          "action": "resolve_incident(cache hit rate degraded due to wrong cache TTL config, increase cache TTL)",
-          "reward": 0.5,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "misleading_web_500_db_rootcause",
-      "metrics": {
-        "total_steps": 5,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9375
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
           "action": "inspect_metrics(database)",
-          "reward": 0.1,
+          "reward": 0.06666666666666667,
           "summary": "Inspected metrics for database."
         },
         {
           "step": 3,
-          "action": "inspect_config(database, DB_POOL_SIZE)",
-          "reward": 0.0,
-          "summary": "Inspected config for database."
+          "action": "inspect_config(web_server, USE_CACHE)",
+          "reward": 0.06666666666666668,
+          "summary": "Inspected config for web_server."
         },
         {
           "step": 4,
-          "action": "update_config(database, DB_POOL_SIZE, 150)",
+          "action": "update_config(web_server, USE_CACHE, True)",
           "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
+          "summary": "Updated web_server config USE_CACHE."
         },
         {
           "step": 5,
-          "action": "resolve_incident(database saturation causing web failures, increase database pool size)",
-          "reward": 0.4875,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "misleading_web_500_db_rootcause",
-      "metrics": {
-        "total_steps": 5,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9375
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "inspect_config(database, DB_POOL_SIZE)",
-          "reward": 0.0,
-          "summary": "Inspected config for database."
-        },
-        {
-          "step": 4,
-          "action": "update_config(database, DB_POOL_SIZE, 150)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 5,
-          "action": "resolve_incident(database saturation causing web failures, increase database pool size)",
-          "reward": 0.4875,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "misleading_web_500_db_rootcause",
-      "metrics": {
-        "total_steps": 5,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9375
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "inspect_config(database, DB_POOL_SIZE)",
-          "reward": 0.0,
-          "summary": "Inspected config for database."
-        },
-        {
-          "step": 4,
-          "action": "update_config(database, DB_POOL_SIZE, 150)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 5,
-          "action": "resolve_incident(database saturation causing web failures, increase database pool size)",
-          "reward": 0.4875,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "misleading_web_500_db_rootcause",
-      "metrics": {
-        "total_steps": 5,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9375
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "inspect_config(database, DB_POOL_SIZE)",
-          "reward": 0.0,
-          "summary": "Inspected config for database."
-        },
-        {
-          "step": 4,
-          "action": "update_config(database, DB_POOL_SIZE, 150)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 5,
-          "action": "resolve_incident(database saturation causing web failures, increase database pool size)",
-          "reward": 0.4875,
-          "summary": "Incident resolved."
-        }
-      ]
-    },
-    {
-      "task_id": "misleading_web_500_db_rootcause",
-      "metrics": {
-        "total_steps": 5,
-        "invalid_actions": 0,
-        "repeated_actions": 0,
-        "evidence_actions": 2,
-        "remediation_actions": 1,
-        "wrong_remediations": 0,
-        "premature_resolutions": 0,
-        "success": true,
-        "final_reward": 0.9375
-      },
-      "evidence_coverage": 1.0,
-      "trajectory": [
-        {
-          "step": 1,
-          "action": "inspect_logs(web_server)",
-          "reward": 0.1,
-          "summary": "Inspected logs for web_server."
-        },
-        {
-          "step": 2,
-          "action": "inspect_metrics(database)",
-          "reward": 0.1,
-          "summary": "Inspected metrics for database."
-        },
-        {
-          "step": 3,
-          "action": "inspect_config(database, DB_POOL_SIZE)",
-          "reward": 0.0,
-          "summary": "Inspected config for database."
-        },
-        {
-          "step": 4,
-          "action": "update_config(database, DB_POOL_SIZE, 150)",
-          "reward": 0.25,
-          "summary": "Updated database config DB_POOL_SIZE."
-        },
-        {
-          "step": 5,
-          "action": "resolve_incident(database saturation causing web failures, increase database pool size)",
-          "reward": 0.4875,
+          "action": "resolve_incident(web server cache usage disabled by configuration regression, enable web cache)",
+          "reward": 0.4944444444444444,
           "summary": "Incident resolved."
         }
       ]

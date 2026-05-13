@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 from baselines import AGENT_CHOICES, Agent, build_agent  # noqa: E402
 from srezero.env import SREEnv  # noqa: E402
 from srezero.metrics import aggregate_episode_records  # noqa: E402
-from srezero.task_registry import list_task_ids  # noqa: E402
+from srezero.task_registry import Difficulty, list_task_ids  # noqa: E402
 
 
 def run_episode(task_id: str, agent: Agent, seed: int) -> dict[str, object]:
@@ -55,11 +55,12 @@ def evaluate(
     *,
     model_override: str | None = None,
     base_url_override: str | None = None,
+    difficulty: Difficulty | None = None,
 ) -> dict[str, object]:
     records: list[dict[str, object]] = []
     by_task: dict[str, dict[str, float]] = {}
 
-    for task_index, task_id in enumerate(list_task_ids()):
+    for task_index, task_id in enumerate(list_task_ids(difficulty=difficulty)):
         task_records = []
         for episode_index in range(episodes):
             episode_seed = seed + task_index * 10_000 + episode_index
@@ -80,6 +81,7 @@ def evaluate(
         "seed": seed,
         "model_override": model_override,
         "base_url_override": base_url_override,
+        "difficulty": difficulty,
         "overall": aggregate_episode_records(records),
         "by_task": by_task,
         "records": records,
@@ -129,6 +131,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model", default=None, help="Override the .env model for this run.")
     parser.add_argument("--base-url", default=None, help="Override the .env base URL for this run.")
+    parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default=None)
     parser.add_argument("--output", type=Path, default=Path("eval/example_results.json"))
     args = parser.parse_args()
 
@@ -138,6 +141,7 @@ def main() -> None:
         seed=args.seed,
         model_override=args.model,
         base_url_override=args.base_url,
+        difficulty=args.difficulty,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(results, indent=2), encoding="utf-8")

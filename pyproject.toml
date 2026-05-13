@@ -27,6 +27,9 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["srezero*", "baselines*"]
 
+[tool.setuptools.package-data]
+srezero = ["task_configs/*.json", "task_splits.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

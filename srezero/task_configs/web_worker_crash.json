@@ -1,0 +1,52 @@
+{
+  "task_id": "web_worker_crash",
+  "difficulty": "easy",
+  "alert": "API availability has dropped after several web workers exited.",
+  "root_cause": "web server worker process crashed",
+  "root_cause_keywords": ["web", "worker", "crashed"],
+  "relevant_evidence": [
+    "check_status:web_server",
+    "inspect_logs:web_server",
+    "inspect_metrics:web_server"
+  ],
+  "evidence_descriptions": {
+    "check_status:web_server": "Web server status is degraded after worker exits.",
+    "inspect_logs:web_server": "Web logs show worker processes exited unexpectedly.",
+    "inspect_metrics:web_server": "Web metrics show high error rate and reduced healthy workers."
+  },
+  "correct_fix": {
+    "action_type": "restart_service",
+    "service": "web_server",
+    "fix_keywords": ["restart", "web"]
+  },
+  "service_patches": {
+    "web_server": {
+      "status": "degraded",
+      "logs": [
+        "ERROR worker pid=4421 exited signal=SIGSEGV",
+        "ERROR worker pid=4422 exited signal=SIGSEGV",
+        "WARN healthy_workers=2 expected_workers=16"
+      ],
+      "metrics": {
+        "error_rate": 0.21,
+        "p95_latency_ms": 880,
+        "healthy_workers": 2
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "check_status(web_server)",
+    "inspect_logs(web_server)",
+    "inspect_metrics(web_server)",
+    "restart_service(web_server)",
+    "resolve_incident(web server worker process crashed, restart web server)"
+  ],
+  "distractors": [
+    "Database and cache are healthy; the failing component is the web worker pool."
+  ],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

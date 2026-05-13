@@ -1,0 +1,59 @@
+{
+  "task_id": "db_slow_queries_missing_index",
+  "difficulty": "medium",
+  "alert": "Order history pages are slow but requests usually complete.",
+  "root_cause": "database missing index causing slow queries",
+  "root_cause_keywords": ["database", "index", "slow queries"],
+  "relevant_evidence": [
+    "inspect_logs:database",
+    "inspect_metrics:database"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:database": "Database logs show repeated sequential scans on orders.",
+    "inspect_metrics:database": "Database query p95 latency is high while connection count is normal."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "INDEX_ORDERS_USER_ID",
+    "exact_value": true,
+    "fix_keywords": ["database", "index"]
+  },
+  "service_patches": {
+    "database": {
+      "logs": [
+        "WARN slow query table=orders filter=user_id plan=seq_scan latency_ms=1800",
+        "WARN slow query table=orders filter=user_id plan=seq_scan latency_ms=1760"
+      ],
+      "metrics": {
+        "active_connections": 24,
+        "max_connections": 80,
+        "connection_wait_ms": 4,
+        "query_p95_latency_ms": 1820
+      },
+      "config": {
+        "INDEX_ORDERS_USER_ID": false
+      }
+    },
+    "web_server": {
+      "metrics": {
+        "p95_latency_ms": 1910,
+        "error_rate": 0.01
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(database)",
+    "inspect_metrics(database)",
+    "update_config(database, INDEX_ORDERS_USER_ID, true)",
+    "resolve_incident(database missing index causing slow queries, add database index)"
+  ],
+  "distractors": [
+    "Connection pool metrics are normal, so increasing the pool is not the minimal fix."
+  ],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

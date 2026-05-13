@@ -1,0 +1,52 @@
+{
+  "task_id": "cache_memory_pressure",
+  "difficulty": "easy",
+  "alert": "Cache latency is elevated and evictions increased sharply.",
+  "root_cause": "cache memory limit is too low",
+  "root_cause_keywords": ["cache", "memory", "limit"],
+  "relevant_evidence": [
+    "inspect_metrics:cache",
+    "inspect_config:cache:MAX_MEMORY_MB"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:cache": "Cache metrics show memory pressure and elevated latency.",
+    "inspect_config:cache:MAX_MEMORY_MB": "Cache MAX_MEMORY_MB is configured too low."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "cache",
+    "key": "MAX_MEMORY_MB",
+    "min_numeric_value": 1024,
+    "fix_keywords": ["cache", "memory"]
+  },
+  "service_patches": {
+    "cache": {
+      "status": "degraded",
+      "logs": [
+        "WARN eviction pressure high namespace=products evicted=8400",
+        "WARN memory limit reached max_memory_mb=256"
+      ],
+      "metrics": {
+        "hit_rate": 0.62,
+        "p95_latency_ms": 42,
+        "memory_used_pct": 98,
+        "evictions_per_min": 8400
+      },
+      "config": {
+        "MAX_MEMORY_MB": 256
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(cache)",
+    "inspect_config(cache, MAX_MEMORY_MB)",
+    "update_config(cache, MAX_MEMORY_MB, 1024)",
+    "resolve_incident(cache memory limit is too low, increase cache memory limit)"
+  ],
+  "distractors": [],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

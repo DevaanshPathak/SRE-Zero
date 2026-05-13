@@ -1,0 +1,69 @@
+{
+  "task_id": "cascading_db_latency",
+  "difficulty": "hard",
+  "alert": "Latency is elevated across web and cache-backed pages.",
+  "root_cause": "database read latency causing cascading service latency",
+  "root_cause_keywords": ["database", "read latency", "cascading"],
+  "relevant_evidence": [
+    "inspect_metrics:web_server",
+    "inspect_metrics:database",
+    "inspect_logs:database"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:web_server": "Web metrics show broad latency but low direct error rate.",
+    "inspect_metrics:database": "Database read query latency is the highest saturated metric.",
+    "inspect_logs:database": "Database logs show repeated slow read queries."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "READ_REPLICA_ENABLED",
+    "exact_value": true,
+    "fix_keywords": ["database", "read replica"]
+  },
+  "service_patches": {
+    "web_server": {
+      "metrics": {
+        "error_rate": 0.01,
+        "p95_latency_ms": 1800,
+        "upstream_timeout_rate": 0.03
+      }
+    },
+    "cache": {
+      "metrics": {
+        "hit_rate": 0.87,
+        "p95_latency_ms": 6
+      }
+    },
+    "database": {
+      "logs": [
+        "WARN slow read query table=product_inventory latency_ms=2400",
+        "WARN read workload saturation replica_enabled=false"
+      ],
+      "metrics": {
+        "active_connections": 38,
+        "query_p95_latency_ms": 2450,
+        "read_iops": 9800,
+        "connection_wait_ms": 20
+      },
+      "config": {
+        "READ_REPLICA_ENABLED": false
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(web_server)",
+    "inspect_metrics(database)",
+    "inspect_logs(database)",
+    "update_config(database, READ_REPLICA_ENABLED, true)",
+    "resolve_incident(database read latency causing cascading service latency, enable database read replica)"
+  ],
+  "distractors": [
+    "Cache is healthy; it is not the source of the cascading latency."
+  ],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

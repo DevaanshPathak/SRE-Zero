@@ -8,6 +8,8 @@ SRE-Zero Mini is a deterministic, simulation-only environment for incident-respo
 
 Each service has simulated status, logs, metrics, configuration, and dependency metadata. Actions mutate only in-memory simulator state.
 
+Task definitions are deterministic JSON configs packaged under `srezero/task_configs/`. Difficulty splits are declared in `srezero/task_splits.json`.
+
 ## Episode Flow
 
 1. `SREEnv.reset(task_id, seed)` loads an incident task.
@@ -47,3 +49,16 @@ escalate(need human operator)
 
 Invalid actions return controlled error observations and penalties. They never crash the environment.
 
+## Gym-Style API
+
+`SREOpenEnv` mirrors the common Gym/Gymnasium API without adding a Gym dependency:
+
+```python
+from srezero import SREOpenEnv
+
+env = SREOpenEnv(task_id="cache_crash")
+observation, info = env.reset(seed=0)
+observation, reward, terminated, truncated, info = env.step("check_status(cache)")
+```
+
+`terminated` is true for resolution, escalation, or terminal incorrect resolution. `truncated` is true when the step budget is exhausted.

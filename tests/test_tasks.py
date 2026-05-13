@@ -1,5 +1,16 @@
 from srezero.env import SREEnv
-from srezero.task_registry import get_task, list_task_ids
+from srezero.task_registry import get_task, list_task_ids, task_config_ids, task_splits
+
+
+def test_phase1_task_count_and_splits() -> None:
+    task_ids = list_task_ids()
+    splits = task_splits()
+
+    assert len(task_ids) == 15
+    assert 15 <= len(task_ids) <= 30
+    assert set(splits) == {"easy", "medium", "hard"}
+    assert all(splits.values())
+    assert set(task_ids) == set(task_config_ids())
 
 
 def test_each_task_can_reset_and_expose_safe_observation() -> None:
@@ -12,6 +23,7 @@ def test_each_task_can_reset_and_expose_safe_observation() -> None:
         assert observation.alert == task.alert
         assert task.root_cause not in observation.model_dump_json()
         assert observation.steps_remaining == task.max_steps
+        assert task.metadata["source"] == "config"
 
 
 def test_metrics_are_computed() -> None:
@@ -23,4 +35,3 @@ def test_metrics_are_computed() -> None:
     assert metrics["total_steps"] == 1
     assert metrics["evidence_actions"] == 1
     assert result.info["evidence_coverage"] > 0
-

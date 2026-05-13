@@ -1,54 +1,46 @@
 # Task Suite
 
-SRE-Zero Mini v0.1 contains five deterministic incidents.
+SRE-Zero Mini v0.1 contains 15 deterministic incident-response tasks. Task configs live in `srezero/task_configs/*.json`, and the formal difficulty split manifest is `srezero/task_splits.json`.
 
-## `cache_crash`
+## Splits
 
-- Difficulty: easy
-- Alert: "Users are seeing elevated latency. Cache hit rate has dropped suddenly."
-- Hidden root cause: cache service crashed
-- Relevant evidence: cache status, cache logs, cache metrics
-- Distractors: none
-- Correct fix: restart cache
-- Expected behavior: inspect cache health, restart cache, submit the cache crash resolution.
+| Split | Count | Tasks |
+| --- | ---: | --- |
+| easy | 4 | `cache_crash`, `web_worker_crash`, `database_disk_full`, `cache_memory_pressure` |
+| medium | 6 | `db_pool_exhaustion`, `cache_latency_degradation`, `db_slow_queries_missing_index`, `web_worker_saturation`, `cache_eviction_storm`, `db_query_timeout_low` |
+| hard | 5 | `web_timeout_misconfig`, `misleading_web_500_db_rootcause`, `web_cache_host_misconfig`, `cascading_db_latency`, `cache_disabled_config_regression` |
 
-## `db_pool_exhaustion`
+## Tasks
 
-- Difficulty: medium
-- Alert: "Checkout is returning intermittent 500 errors."
-- Hidden root cause: database connection pool exhaustion
-- Relevant evidence: web logs show checkout 500s; database metrics show connections near max
-- Distractors: web errors are symptoms rather than the root cause
-- Correct fix: increase `database.DB_POOL_SIZE`
-- Expected behavior: inspect web logs, inspect database metrics, update database pool size, resolve.
+| Task | Difficulty | Hidden root cause | Correct fix |
+| --- | --- | --- | --- |
+| `cache_crash` | easy | Cache service crashed | Restart `cache` |
+| `web_worker_crash` | easy | Web worker process crashed | Restart `web_server` |
+| `database_disk_full` | easy | Database disk is full | Increase `database.DISK_QUOTA_GB` |
+| `cache_memory_pressure` | easy | Cache memory limit too low | Increase `cache.MAX_MEMORY_MB` |
+| `db_pool_exhaustion` | medium | Database connection pool exhaustion | Increase `database.DB_POOL_SIZE` |
+| `cache_latency_degradation` | medium | Cache TTL too low | Increase `cache.TTL_SECONDS` |
+| `db_slow_queries_missing_index` | medium | Missing database index causing slow queries | Enable `database.INDEX_ORDERS_USER_ID` |
+| `web_worker_saturation` | medium | Web worker pool too small | Increase `web_server.MAX_WORKERS` |
+| `cache_eviction_storm` | medium | Cache eviction storm from low memory | Increase `cache.MAX_MEMORY_MB` |
+| `db_query_timeout_low` | medium | Database query timeout too low | Increase `database.QUERY_TIMEOUT_MS` |
+| `web_timeout_misconfig` | hard | Web timeout configuration too low | Increase `web_server.TIMEOUT_MS` |
+| `misleading_web_500_db_rootcause` | hard | Database saturation causing web failures | Increase `database.DB_POOL_SIZE` |
+| `web_cache_host_misconfig` | hard | Web cache host points to wrong endpoint | Set `web_server.CACHE_HOST` |
+| `cascading_db_latency` | hard | Database read latency causing cascading latency | Enable `database.READ_REPLICA_ENABLED` |
+| `cache_disabled_config_regression` | hard | Web cache usage disabled by config regression | Enable `web_server.USE_CACHE` |
 
-## `web_timeout_misconfig`
+## Design Notes
 
-- Difficulty: hard
-- Alert: "Users report intermittent timeouts on the API."
-- Hidden root cause: web server timeout configuration too low
-- Relevant evidence: web logs show upstream timeout; web config has `TIMEOUT_MS` too low
-- Distractors: upstream services appear in timeout logs but are not saturated
-- Correct fix: increase `web_server.TIMEOUT_MS`
-- Expected behavior: inspect web logs, inspect web timeout config, update timeout, resolve.
+Each task config contains:
 
-## `cache_latency_degradation`
+- Alert text visible to the agent.
+- Hidden root cause and root-cause matching keywords.
+- Relevant evidence keys and visible finding descriptions.
+- Service state patches for logs, metrics, status, and config.
+- Correct remediation validator.
+- Expected action pattern for the scripted expert baseline.
+- Distractors and metadata.
 
-- Difficulty: medium
-- Alert: "Application latency has increased across product pages."
-- Hidden root cause: cache hit rate degraded due to wrong cache TTL config
-- Relevant evidence: cache metrics show low hit rate; cache config has `TTL_SECONDS` too low
-- Distractors: web latency is a symptom of cache misses
-- Correct fix: increase `cache.TTL_SECONDS`
-- Expected behavior: inspect cache metrics, inspect cache TTL config, update TTL, resolve.
-
-## `misleading_web_500_db_rootcause`
-
-- Difficulty: hard
-- Alert: "Web server is producing frequent 500 errors."
-- Hidden root cause: database saturation causing web failures
-- Relevant evidence: web logs point to downstream database waits; database metrics show saturation
-- Distractors: web logs look severe, but restarting `web_server` does not solve the incident
-- Correct fix: increase `database.DB_POOL_SIZE`
-- Expected behavior: inspect web logs, inspect database metrics, avoid the web restart distractor, update database pool size, resolve.
+The agent never sees hidden root-cause fields, correct-fix fields, or reward internals in the observation.
 

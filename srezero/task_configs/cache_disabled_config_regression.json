@@ -1,0 +1,69 @@
+{
+  "task_id": "cache_disabled_config_regression",
+  "difficulty": "hard",
+  "alert": "Database load climbed after a web config rollout and cache hit rate fell.",
+  "root_cause": "web server cache usage disabled by configuration regression",
+  "root_cause_keywords": ["web", "cache", "configuration"],
+  "relevant_evidence": [
+    "inspect_metrics:cache",
+    "inspect_metrics:database",
+    "inspect_config:web_server:USE_CACHE"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:cache": "Cache metrics show almost no traffic after the rollout.",
+    "inspect_metrics:database": "Database metrics show increased read load from cache bypass.",
+    "inspect_config:web_server:USE_CACHE": "Web USE_CACHE is false after the config rollout."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "web_server",
+    "key": "USE_CACHE",
+    "exact_value": true,
+    "fix_keywords": ["web", "cache"]
+  },
+  "service_patches": {
+    "web_server": {
+      "logs": [
+        "INFO config rollout applied version=2026.05.13",
+        "WARN cache client disabled by config USE_CACHE=false"
+      ],
+      "metrics": {
+        "p95_latency_ms": 760,
+        "error_rate": 0.02,
+        "cache_bypass_rate": 1.0
+      },
+      "config": {
+        "USE_CACHE": false
+      }
+    },
+    "cache": {
+      "metrics": {
+        "hit_rate": 0.02,
+        "request_rate": 2,
+        "p95_latency_ms": 4
+      }
+    },
+    "database": {
+      "metrics": {
+        "active_connections": 72,
+        "query_p95_latency_ms": 420,
+        "read_iops": 7400
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(cache)",
+    "inspect_metrics(database)",
+    "inspect_config(web_server, USE_CACHE)",
+    "update_config(web_server, USE_CACHE, true)",
+    "resolve_incident(web server cache usage disabled by configuration regression, enable web cache)"
+  ],
+  "distractors": [
+    "Increasing database capacity treats the symptom rather than the web config regression."
+  ],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

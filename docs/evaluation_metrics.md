@@ -14,3 +14,9 @@ SRE-Zero Mini reports:
 
 These metrics separate diagnosis quality, tool reliability, remediation quality, and efficiency.
 
+Evaluation can run the full suite or a difficulty split:
+
+```bash
+python eval/run_eval.py --agent scripted --episodes 1
+python eval/run_eval.py --agent scripted --difficulty hard --episodes 1
+```

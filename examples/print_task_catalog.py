@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from srezero.task_registry import task_catalog  # noqa: E402
+from srezero.task_registry import task_catalog, task_splits  # noqa: E402
 
 
 def main() -> None:
@@ -23,8 +23,8 @@ def main() -> None:
     for task in task_catalog():
         table.add_row(task["task_id"], task["difficulty"], task["alert"])
     Console().print(table)
+    Console().print(f"Splits: {task_splits()}")
 
 
 if __name__ == "__main__":
     main()
-

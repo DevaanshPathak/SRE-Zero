@@ -1,0 +1,24 @@
+{
+  "easy": [
+    "cache_crash",
+    "web_worker_crash",
+    "database_disk_full",
+    "cache_memory_pressure"
+  ],
+  "medium": [
+    "db_pool_exhaustion",
+    "cache_latency_degradation",
+    "db_slow_queries_missing_index",
+    "web_worker_saturation",
+    "cache_eviction_storm",
+    "db_query_timeout_low"
+  ],
+  "hard": [
+    "web_timeout_misconfig",
+    "misleading_web_500_db_rootcause",
+    "web_cache_host_misconfig",
+    "cascading_db_latency",
+    "cache_disabled_config_regression"
+  ]
+}
+

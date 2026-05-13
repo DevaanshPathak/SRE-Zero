@@ -1,0 +1,61 @@
+{
+  "task_id": "db_query_timeout_low",
+  "difficulty": "medium",
+  "alert": "Reporting API requests fail intermittently during normal database load.",
+  "root_cause": "database query timeout configuration too low",
+  "root_cause_keywords": ["database", "query timeout", "configuration"],
+  "relevant_evidence": [
+    "inspect_logs:database",
+    "inspect_config:database:QUERY_TIMEOUT_MS"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:database": "Database logs show queries canceled exactly at the low timeout.",
+    "inspect_config:database:QUERY_TIMEOUT_MS": "Database QUERY_TIMEOUT_MS is too low for reports."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "QUERY_TIMEOUT_MS",
+    "min_numeric_value": 5000,
+    "fix_keywords": ["database", "query timeout"]
+  },
+  "service_patches": {
+    "database": {
+      "logs": [
+        "ERROR query canceled after_ms=1000 reason=query_timeout report=monthly_sales",
+        "WARN report query normal latency estimate_ms=3200 exceeds timeout"
+      ],
+      "metrics": {
+        "active_connections": 18,
+        "query_p95_latency_ms": 3100,
+        "connection_wait_ms": 5
+      },
+      "config": {
+        "QUERY_TIMEOUT_MS": 1000
+      }
+    },
+    "web_server": {
+      "logs": [
+        "ERROR request_id=4011 path=/reports status=500 error=query_timeout"
+      ],
+      "metrics": {
+        "error_rate": 0.06,
+        "p95_latency_ms": 1050
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(database)",
+    "inspect_config(database, QUERY_TIMEOUT_MS)",
+    "update_config(database, QUERY_TIMEOUT_MS, 5000)",
+    "resolve_incident(database query timeout configuration too low, increase database query timeout)"
+  ],
+  "distractors": [
+    "The database is not saturated; the configured timeout is too aggressive."
+  ],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

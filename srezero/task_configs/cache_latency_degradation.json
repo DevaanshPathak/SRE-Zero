@@ -1,0 +1,61 @@
+{
+  "task_id": "cache_latency_degradation",
+  "difficulty": "medium",
+  "alert": "Application latency has increased across product pages.",
+  "root_cause": "cache hit rate degraded due to wrong cache TTL config",
+  "root_cause_keywords": ["cache", "ttl", "hit rate"],
+  "relevant_evidence": [
+    "inspect_metrics:cache",
+    "inspect_config:cache:TTL_SECONDS"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:cache": "Cache metrics show a low hit rate during the latency increase.",
+    "inspect_config:cache:TTL_SECONDS": "Cache TTL_SECONDS is too low, causing frequent expirations."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "cache",
+    "key": "TTL_SECONDS",
+    "min_numeric_value": 120,
+    "fix_keywords": ["cache", "ttl"]
+  },
+  "service_patches": {
+    "web_server": {
+      "logs": [
+        "INFO product page requests shifted to database fallback",
+        "WARN product page p95 latency elevated latency_ms=720"
+      ],
+      "metrics": {
+        "p95_latency_ms": 740
+      }
+    },
+    "cache": {
+      "logs": [
+        "INFO cache keys expiring rapidly namespace=products",
+        "WARN frequent miss burst observed namespace=products"
+      ],
+      "metrics": {
+        "hit_rate": 0.31,
+        "p95_latency_ms": 18,
+        "memory_used_pct": 28
+      },
+      "config": {
+        "TTL_SECONDS": 5
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(cache)",
+    "inspect_config(cache, TTL_SECONDS)",
+    "update_config(cache, TTL_SECONDS, 300)",
+    "resolve_incident(cache TTL config too low, increase cache TTL)"
+  ],
+  "distractors": [
+    "The web latency is a symptom of excessive cache misses."
+  ],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

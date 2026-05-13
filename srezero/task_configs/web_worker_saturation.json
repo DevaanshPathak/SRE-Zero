@@ -1,0 +1,51 @@
+{
+  "task_id": "web_worker_saturation",
+  "difficulty": "medium",
+  "alert": "API latency increased after traffic rose during a promotion.",
+  "root_cause": "web server worker pool too small",
+  "root_cause_keywords": ["web", "worker", "pool"],
+  "relevant_evidence": [
+    "inspect_metrics:web_server",
+    "inspect_config:web_server:MAX_WORKERS"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:web_server": "Web metrics show queueing and worker saturation.",
+    "inspect_config:web_server:MAX_WORKERS": "Web MAX_WORKERS is too low for the request rate."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "web_server",
+    "key": "MAX_WORKERS",
+    "min_numeric_value": 32,
+    "fix_keywords": ["web", "worker"]
+  },
+  "service_patches": {
+    "web_server": {
+      "logs": [
+        "WARN request queue depth high depth=280",
+        "WARN all workers busy max_workers=16"
+      ],
+      "metrics": {
+        "request_rate": 820,
+        "error_rate": 0.03,
+        "p95_latency_ms": 1450,
+        "queue_depth": 280
+      },
+      "config": {
+        "MAX_WORKERS": 16
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(web_server)",
+    "inspect_config(web_server, MAX_WORKERS)",
+    "update_config(web_server, MAX_WORKERS, 32)",
+    "resolve_incident(web server worker pool too small, increase web worker pool)"
+  ],
+  "distractors": [],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

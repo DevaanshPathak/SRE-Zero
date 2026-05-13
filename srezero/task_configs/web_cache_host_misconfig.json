@@ -1,0 +1,62 @@
+{
+  "task_id": "web_cache_host_misconfig",
+  "difficulty": "hard",
+  "alert": "The web tier is bypassing cache and product page latency is high.",
+  "root_cause": "web server cache host configuration is wrong",
+  "root_cause_keywords": ["web", "cache host", "configuration"],
+  "relevant_evidence": [
+    "inspect_logs:web_server",
+    "inspect_config:web_server:CACHE_HOST",
+    "inspect_metrics:cache"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:web_server": "Web logs show cache connection failures to the wrong host.",
+    "inspect_config:web_server:CACHE_HOST": "Web CACHE_HOST points at the wrong endpoint.",
+    "inspect_metrics:cache": "Cache metrics show very low traffic despite web demand."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "web_server",
+    "key": "CACHE_HOST",
+    "exact_value": "cache.internal",
+    "fix_keywords": ["cache host", "web"]
+  },
+  "service_patches": {
+    "web_server": {
+      "logs": [
+        "WARN cache connection failed host=cache-old.internal reason=dns_error",
+        "INFO falling back to database for product reads"
+      ],
+      "metrics": {
+        "p95_latency_ms": 920,
+        "error_rate": 0.02,
+        "cache_bypass_rate": 0.93
+      },
+      "config": {
+        "CACHE_HOST": "cache-old.internal"
+      }
+    },
+    "cache": {
+      "metrics": {
+        "hit_rate": 0.90,
+        "request_rate": 8,
+        "p95_latency_ms": 4
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(web_server)",
+    "inspect_config(web_server, CACHE_HOST)",
+    "inspect_metrics(cache)",
+    "update_config(web_server, CACHE_HOST, cache.internal)",
+    "resolve_incident(web server cache host configuration is wrong, update web cache host)"
+  ],
+  "distractors": [
+    "Restarting cache does not fix the web tier pointing at the wrong cache host."
+  ],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

@@ -1,0 +1,54 @@
+{
+  "task_id": "database_disk_full",
+  "difficulty": "easy",
+  "alert": "Writes are failing and checkout updates are being rejected.",
+  "root_cause": "database disk is full",
+  "root_cause_keywords": ["database", "disk", "full"],
+  "relevant_evidence": [
+    "inspect_logs:database",
+    "inspect_metrics:database"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:database": "Database logs show write failures because disk space is exhausted.",
+    "inspect_metrics:database": "Database disk usage is at 99 percent."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "DISK_QUOTA_GB",
+    "min_numeric_value": 200,
+    "fix_keywords": ["database", "disk"]
+  },
+  "service_patches": {
+    "database": {
+      "status": "degraded",
+      "logs": [
+        "ERROR write failed reason=no_space_left_on_device table=orders",
+        "WARN wal archival blocked reason=disk_full",
+        "ERROR checkpoint failed reason=disk_full"
+      ],
+      "metrics": {
+        "disk_used_pct": 99,
+        "write_error_rate": 0.32,
+        "active_connections": 20
+      },
+      "config": {
+        "DISK_QUOTA_GB": 100
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(database)",
+    "inspect_metrics(database)",
+    "update_config(database, DISK_QUOTA_GB, 200)",
+    "resolve_incident(database disk is full, increase database disk quota)"
+  ],
+  "distractors": [
+    "Restarting the database does not create additional disk capacity."
+  ],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+
