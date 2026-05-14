@@ -78,7 +78,12 @@ class OpenAICompatibleChatClient:
             "temperature": self.config.temperature,
             "max_tokens": max_tokens,
         }
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "SRE-Zero/0.1",
+            "X-Title": "SRE-Zero",
+            "HTTP-Referer": "https://github.com/DevaanshPathak/SRE-Zero",
+        }
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
 

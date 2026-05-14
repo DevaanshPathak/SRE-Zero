@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from rich.console import Console
@@ -19,16 +20,25 @@ from srezero.env import SREEnv  # noqa: E402
 from srezero.metrics import aggregate_episode_records  # noqa: E402
 from srezero.task_registry import Difficulty, list_task_ids  # noqa: E402
 
+ProgressCallback = Callable[[str, int, int, int, int, str], None]
+
 
 def run_episode(task_id: str, agent: Agent, seed: int) -> dict[str, object]:
     env = SREEnv()
     observation = env.reset(task_id=task_id, seed=seed)
     agent.reset()
     trajectory: list[dict[str, object]] = []
+    agent_error: str | None = None
+    final_info: dict[str, object] = {}
 
     while not env.is_done():
-        action = agent.act(observation)
+        try:
+            action = agent.act(observation)
+        except Exception as exc:  # noqa: BLE001
+            agent_error = f"{type(exc).__name__}: {exc}"
+            break
         result = env.step(action)
+        final_info = result.info
         trajectory.append(
             {
                 "step": result.observation.step,
@@ -39,13 +49,15 @@ def run_episode(task_id: str, agent: Agent, seed: int) -> dict[str, object]:
         )
         observation = result.observation
 
-    final_info = result.info if trajectory else {}
-    return {
+    record: dict[str, object] = {
         "task_id": task_id,
         "metrics": env.metrics.model_dump(),
         "evidence_coverage": final_info.get("evidence_coverage", 0.0),
         "trajectory": trajectory,
     }
+    if agent_error is not None:
+        record["agent_error"] = agent_error
+    return record
 
 
 def evaluate(
@@ -56,13 +68,24 @@ def evaluate(
     model_override: str | None = None,
     base_url_override: str | None = None,
     difficulty: Difficulty | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, object]:
     records: list[dict[str, object]] = []
     by_task: dict[str, dict[str, float]] = {}
+    task_ids = list_task_ids(difficulty=difficulty)
 
-    for task_index, task_id in enumerate(list_task_ids(difficulty=difficulty)):
+    for task_index, task_id in enumerate(task_ids):
         task_records = []
         for episode_index in range(episodes):
+            if progress_callback is not None:
+                progress_callback(
+                    task_id,
+                    task_index + 1,
+                    len(task_ids),
+                    episode_index + 1,
+                    episodes,
+                    "start",
+                )
             episode_seed = seed + task_index * 10_000 + episode_index
             agent = build_agent(
                 agent_name,
@@ -73,6 +96,15 @@ def evaluate(
             record = run_episode(task_id=task_id, agent=agent, seed=episode_seed)
             records.append(record)
             task_records.append(record)
+            if progress_callback is not None:
+                progress_callback(
+                    task_id,
+                    task_index + 1,
+                    len(task_ids),
+                    episode_index + 1,
+                    episodes,
+                    "finish",
+                )
         by_task[task_id] = aggregate_episode_records(task_records)
 
     return {

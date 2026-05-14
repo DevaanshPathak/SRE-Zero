@@ -93,6 +93,57 @@ python eval/run_eval.py --agent open_source --episodes 1
 python eval/run_eval.py --agent frontier --episodes 1
 ```
 
+Generate a JSON report with raw records and model-wise marks:
+
+```bash
+python eval/run_baseline_marks.py --baselines all --episodes 1 --output notes/runs/baseline_marks.json
+python eval/run_baseline_marks.py --baselines prompting react --models openai/gpt-5-mini openai/gpt-5.4-mini
+```
+
+Run the full default sweep:
+
+```bash
+python eval/run_all_eval.py --preset paper --timeout-seconds 60
+```
+
+For budgeted daily collection, see `evals.md`. It splits the paper preset into
+day-wise commands that write JSONs under `notes/runs/`.
+
+The full sweep prints a run plan, timestamped start/end logs for each baseline/model
+run, and live progress bars for task/episode progress. It also writes a log file to
+`notes/runs/run_all_eval.log` by default.
+
+The `paper` preset compares 4-5 models inside each LLM baseline bucket:
+
+- `prompting`: `openai/gpt-5-mini`, `openai/gpt-5.4-mini`, `google/gemini-3.1-flash-lite`, `qwen/qwen3.6-flash`, `mistralai/mistral-medium-3-5`
+- `react`: `openai/gpt-5-mini`, `openai/gpt-5.4`, `anthropic/claude-sonnet-4.6`, `google/gemini-3.1-pro-preview`, `x-ai/grok-4.3`
+- `open_source`: `ibm-granite/granite-4.1-8b`, `inclusionai/ring-2.6-1t:free`, `qwen/qwen3.6-35b-a3b`, `nvidia/nemotron-3-super-120b-a12b:free`, `google/gemma-4-26b-a4b-it:free`
+- `frontier`: `openai/gpt-5.5`, `anthropic/claude-opus-4.7-fast`, `google/gemini-3.1-pro-preview`, `x-ai/grok-4.3`, `mistralai/mistral-medium-3-5`
+
+Use a smaller smoke preset:
+
+```bash
+python eval/run_all_eval.py --preset quick --timeout-seconds 60
+```
+
+Disable the log file or choose a custom path:
+
+```bash
+python eval/run_all_eval.py --preset quick --no-log-file
+python eval/run_all_eval.py --preset paper --log-file notes/runs/paper_sweep.log
+```
+
+Override any model bucket:
+
+```bash
+python eval/run_all_eval.py \
+  --prompting-models openai/gpt-5-mini \
+  --react-models openai/gpt-5-mini \
+  --open-source-models ibm-granite/granite-4.1-8b inclusionai/ring-2.6-1t:free \
+  --frontier-models openai/gpt-5.5 anthropic/claude-opus-4.7-fast \
+  --summary-output notes/runs/all_eval_summary.json
+```
+
 Run tests and lint:
 
 ```bash
