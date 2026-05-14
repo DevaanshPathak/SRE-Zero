@@ -20,9 +20,19 @@ ACTION_NAMES = (
     "escalate",
 )
 ACTION_RE = re.compile(
-    rf"(?P<action>{'|'.join(ACTION_NAMES)}\s*\([^\n\r]*\))",
+    rf"(?P<action>(?:{'|'.join(ACTION_NAMES)})\s*\([^\n\r]*\))",
     re.IGNORECASE,
 )
+BARE_EVIDENCE_ACTION_RE = re.compile(
+    r"^\s*(?:Action:\s*)?"
+    r"(?P<action>inspect_logs|inspect_metrics|check_status)\s*\.?\s*$",
+    re.IGNORECASE,
+)
+SERVICE_HINTS = {
+    "web_server": ("web_server", "web server", "api", "timeout"),
+    "database": ("database", "db", "connection", "query"),
+    "cache": ("cache", "hit rate", "ttl", "eviction"),
+}
 
 
 class PromptingBaselineAgent:
@@ -53,7 +63,7 @@ class PromptingBaselineAgent:
             },
         ]
         response = self.client.complete(messages)
-        return _extract_action(response)
+        return _extract_action(response, observation)
 
 
 class ReActBaselineAgent:
@@ -88,7 +98,7 @@ class ReActBaselineAgent:
         )
         response = self.client.complete(self.messages)
         self.messages.append({"role": "assistant", "content": response})
-        return _extract_action(response)
+        return _extract_action(response, observation)
 
 
 class OpenSourceLLMBaselineAgent(PromptingBaselineAgent):
@@ -111,6 +121,8 @@ def _system_prompt() -> str:
         "Use only the available simulator actions. Do not invent tools. "
         "Gather evidence before remediation. Apply minimal fixes. "
         "Return exactly one action call and no extra text.\n\n"
+        "The action must include required arguments in parentheses. "
+        "Bad: inspect_metrics. Good: inspect_metrics(cache).\n\n"
         "Allowed actions:\n"
         "- inspect_logs(service)\n"
         "- inspect_metrics(service)\n"
@@ -132,6 +144,8 @@ def _react_system_prompt() -> str:
         "Respond in this format:\n"
         "Thought: <brief reasoning>\n"
         "Action: <one valid action call>\n\n"
+        "The action must include required arguments in parentheses. "
+        "Bad: inspect_logs. Good: inspect_logs(web_server).\n\n"
         "Valid services: web_server, database, cache."
     )
 
@@ -140,14 +154,20 @@ def _observation_json(observation: Observation) -> str:
     return json.dumps(observation.model_dump(mode="json"), indent=2)
 
 
-def _extract_action(response: str) -> Action | str:
+def _extract_action(response: str, observation: Observation | None = None) -> Action | str:
     for line in reversed(response.strip().splitlines()):
         candidate = _candidate_from_text(line)
         if candidate is not None:
             return _normalize_or_return(candidate)
+        repaired = _repair_bare_evidence_action(line, observation)
+        if repaired is not None:
+            return repaired
     candidate = _candidate_from_text(response)
     if candidate is not None:
         return _normalize_or_return(candidate)
+    repaired = _repair_bare_evidence_action(response, observation)
+    if repaired is not None:
+        return repaired
     return response.strip()
 
 
@@ -164,3 +184,45 @@ def _normalize_or_return(candidate: str) -> Action | str:
     except ValueError:
         return candidate
 
+
+def _repair_bare_evidence_action(
+    response: str,
+    observation: Observation | None,
+) -> Action | str | None:
+    if observation is None:
+        return None
+    match = BARE_EVIDENCE_ACTION_RE.match(response)
+    if match is None:
+        return None
+    service = _infer_service(observation)
+    if service is None:
+        return None
+    return _normalize_or_return(f"{match.group('action').lower()}({service})")
+
+
+def _infer_service(observation: Observation) -> str | None:
+    text = " ".join(
+        [
+            observation.alert,
+            observation.last_result.summary if observation.last_result else "",
+            _details_text(observation),
+            " ".join(observation.known_findings),
+        ]
+    ).lower()
+    scores = {
+        service: sum(1 for hint in hints if hint in text)
+        for service, hints in SERVICE_HINTS.items()
+    }
+    best_service, best_score = max(scores.items(), key=lambda item: item[1])
+    if best_score <= 0:
+        return None
+    return best_service
+
+
+def _details_text(observation: Observation) -> str:
+    if observation.last_result is None:
+        return ""
+    details = observation.last_result.details
+    if isinstance(details, str):
+        return details
+    return json.dumps(details, sort_keys=True)

@@ -166,6 +166,7 @@ def main() -> None:
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default=None)
     parser.add_argument("--output", type=Path, default=Path("eval/example_results.json"))
     args = parser.parse_args()
+    output_path = output_file_path(args.output, default_name="example_results.json")
 
     results = evaluate(
         agent_name=args.agent,
@@ -175,10 +176,25 @@ def main() -> None:
         base_url_override=args.base_url,
         difficulty=args.difficulty,
     )
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
     print_results(results)
-    print(f"Wrote results to {args.output}")
+    print(f"Wrote results to {output_path}")
+
+
+def repo_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return ROOT / path
+
+
+def output_file_path(path: Path, *, default_name: str) -> Path:
+    resolved = repo_path(path)
+    if resolved.exists() and resolved.is_dir():
+        return resolved / default_name
+    if resolved.suffix:
+        return resolved
+    return resolved / default_name
 
 
 if __name__ == "__main__":

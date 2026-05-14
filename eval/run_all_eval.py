@@ -99,6 +99,7 @@ BASELINE_CHOICES = ("random", "scripted", "prompting", "react", "open_source", "
 
 def main() -> None:
     args = parse_args()
+    normalize_paths(args)
     if args.timeout_seconds is not None:
         os.environ["SREZERO_LLM_TIMEOUT_SECONDS"] = str(args.timeout_seconds)
 
@@ -315,6 +316,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-deterministic", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
+
+
+def normalize_paths(args: argparse.Namespace) -> None:
+    args.output_dir = repo_path(args.output_dir)
+    args.summary_output = output_file_path(args.summary_output, default_name="summary.json")
+    args.log_file = output_file_path(args.log_file, default_name="run.log")
+
+
+def repo_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return ROOT / path
+
+
+def output_file_path(path: Path, *, default_name: str) -> Path:
+    resolved = repo_path(path)
+    if resolved.exists() and resolved.is_dir():
+        return resolved / default_name
+    if path.as_posix().endswith("/") or path.as_posix().endswith("\\"):
+        return resolved / default_name
+    if resolved.suffix:
+        return resolved
+    return resolved / default_name
 
 
 def build_plan(args: argparse.Namespace) -> list[PlanItem]:

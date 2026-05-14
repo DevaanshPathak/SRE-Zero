@@ -115,9 +115,9 @@ class OpenAICompatibleChatClient:
 def load_env_file(path: Path | None = None) -> dict[str, str]:
     """Load simple KEY=VALUE lines from `.env` without overriding existing env vars."""
 
-    env_path = path or Path.cwd() / ".env"
+    env_path = path or _find_env_file()
     loaded: dict[str, str] = {}
-    if not env_path.exists():
+    if env_path is None or not env_path.exists():
         return loaded
 
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
@@ -130,6 +130,22 @@ def load_env_file(path: Path | None = None) -> dict[str, str]:
         loaded[key] = value
         os.environ.setdefault(key, value)
     return loaded
+
+
+def _find_env_file() -> Path | None:
+    """Find `.env` from common launch directories.
+
+    Eval scripts are often run from either the repository root or `eval/`.
+    Walking upward from cwd keeps both forms working without requiring secrets
+    to be exported into the shell.
+    """
+
+    for start in (Path.cwd(), Path(__file__).resolve().parents[1]):
+        for candidate_dir in (start, *start.parents):
+            candidate = candidate_dir / ".env"
+            if candidate.exists():
+                return candidate
+    return None
 
 
 def _env_first(*keys: str) -> str:

@@ -51,6 +51,7 @@ ZERO_OVERALL = {
 
 def main() -> None:
     args = parse_args()
+    args.output = output_file_path(args.output, default_name="baseline_marks.json")
     baselines = expand_baselines(args.baselines)
     models = args.models or []
     runs: list[dict[str, Any]] = []
@@ -140,6 +141,21 @@ def parse_args() -> argparse.Namespace:
         help="JSON output path.",
     )
     return parser.parse_args()
+
+
+def repo_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return ROOT / path
+
+
+def output_file_path(path: Path, *, default_name: str) -> Path:
+    resolved = repo_path(path)
+    if resolved.exists() and resolved.is_dir():
+        return resolved / default_name
+    if resolved.suffix:
+        return resolved
+    return resolved / default_name
 
 
 def expand_baselines(raw_baselines: list[str]) -> list[str]:
