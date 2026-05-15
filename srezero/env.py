@@ -307,6 +307,7 @@ class SREEnv:
             )
 
         self.metrics.wrong_remediations += 1
+        self._record_distractor_failure(action)
         self.reward_tracker.add_penalty("wrong_remediation")
         if action.service != self._task.correct_fix.service:
             self.reward_tracker.add_penalty("restart_unrelated_service")
@@ -337,6 +338,7 @@ class SREEnv:
             )
 
         self.metrics.wrong_remediations += 1
+        self._record_distractor_failure(action)
         self.reward_tracker.add_penalty("wrong_remediation")
         return ActionResult(
             summary=f"Updated {service.name} config, but the incident persists.",
@@ -404,3 +406,7 @@ class SREEnv:
         self.metrics.evidence_actions += 1
         self.reward_tracker.mark_evidence(len(self.evidence_found))
         return True
+
+    def _record_distractor_failure(self, action: Action) -> None:
+        if action.service in self._task.distractor_services:
+            self.metrics.distractor_failures += 1

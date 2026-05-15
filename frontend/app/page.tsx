@@ -47,7 +47,13 @@ const actionTypes: ActionType[] = [
   "resolve_incident",
   "escalate"
 ];
-const serviceNames: ServiceName[] = ["web_server", "database", "cache"];
+const serviceNames: ServiceName[] = [
+  "web_server",
+  "database",
+  "cache",
+  "message_queue",
+  "load_balancer"
+];
 const difficultyFilters: Array<Difficulty | "all"> = ["all", "easy", "medium", "hard"];
 
 export default function Home() {
@@ -618,6 +624,7 @@ function MetricList({ info }: { info: StepInfo | null }) {
       <Metric label="Total steps" value={String(metrics.totalSteps)} />
       <Metric label="Invalid actions" value={String(metrics.invalidActions)} />
       <Metric label="Wrong remediations" value={String(metrics.wrongRemediations)} />
+      <Metric label="Distractor failures" value={String(metrics.distractorFailures)} />
       <Metric label="Evidence" value={`${Math.round(info.evidenceCoverage * 100)}%`} />
       <Metric label="Final reward" value={metrics.finalReward.toFixed(3)} />
       <div className="rewardRows">
@@ -677,7 +684,13 @@ function defaultKeyForService(service: ServiceName): string {
   if (service === "database") {
     return "DB_POOL_SIZE";
   }
-  return "TTL_SECONDS";
+  if (service === "cache") {
+    return "TTL_SECONDS";
+  }
+  if (service === "message_queue") {
+    return "CONSUMER_CONCURRENCY";
+  }
+  return "MAX_CONNECTIONS";
 }
 
 function parseConfigValue(input: string): ConfigValue {

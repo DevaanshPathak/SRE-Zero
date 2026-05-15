@@ -47,6 +47,7 @@ interface TaskConfig {
   service_patches: Partial<Record<ServiceName, ServicePatchConfig>>;
   expected_action_pattern: string[];
   distractors: string[];
+  distractor_services?: ServiceName[];
   max_steps: number;
   terminal_on_wrong_resolution?: boolean;
   metadata?: Record<string, string>;
@@ -66,7 +67,13 @@ interface RewardState {
   penalties: Record<string, number>;
 }
 
-const SERVICES: ServiceName[] = ["web_server", "database", "cache"];
+const SERVICES: ServiceName[] = [
+  "web_server",
+  "database",
+  "cache",
+  "message_queue",
+  "load_balancer"
+];
 const SERVICE_ACTIONS = new Set<ActionType>([
   "inspect_logs",
   "inspect_metrics",
@@ -299,6 +306,7 @@ export class SimulatorEpisode {
     }
 
     this.metrics.wrongRemediations += 1;
+    this.recordDistractorFailure(action);
     this.addPenalty("wrong_remediation");
     if (action.service !== this.task.correct_fix.service) {
       this.addPenalty("restart_unrelated_service");
@@ -331,6 +339,7 @@ export class SimulatorEpisode {
     }
 
     this.metrics.wrongRemediations += 1;
+    this.recordDistractorFailure(action);
     this.addPenalty("wrong_remediation");
     return {
       summary: `Updated ${service.name} config, but the incident persists.`,
@@ -400,6 +409,16 @@ export class SimulatorEpisode {
     this.rewardState.components.evidence =
       COMPONENT_MAX.evidence * (this.evidenceFound.size / Math.max(1, this.task.relevant_evidence.length));
     return true;
+  }
+
+  private recordDistractorFailure(action: Action): void {
+    if (
+      action.service &&
+      isServiceName(action.service) &&
+      this.task.distractor_services?.includes(action.service)
+    ) {
+      this.metrics.distractorFailures += 1;
+    }
   }
 
   private matchingEvidenceKeys(action: Action): string[] {
@@ -637,7 +656,7 @@ function baseServices(): Record<ServiceName, ServiceState> {
         upstream_timeout_rate: 0
       },
       config: { TIMEOUT_MS: 3000, MAX_WORKERS: 16 },
-      dependencies: ["database", "cache"]
+      dependencies: ["database", "cache", "message_queue"]
     },
     database: {
       name: "database",
@@ -665,6 +684,50 @@ function baseServices(): Record<ServiceName, ServiceState> {
       metrics: { hit_rate: 0.92, p95_latency_ms: 5, memory_used_pct: 45 },
       config: { TTL_SECONDS: 300, MAX_MEMORY_MB: 512 },
       dependencies: []
+    },
+    message_queue: {
+      name: "message_queue",
+      status: "healthy",
+      logs: [
+        "INFO queue=checkout_jobs consumers=8 backlog=24",
+        "INFO publish latency_ms=12 ack_rate=0.99"
+      ],
+      metrics: {
+        queue_depth: 24,
+        oldest_message_age_ms: 1200,
+        publish_error_rate: 0,
+        consumer_lag_ms: 250,
+        dead_letter_rate: 0
+      },
+      config: {
+        CONSUMER_CONCURRENCY: 8,
+        MAX_IN_FLIGHT: 500,
+        RETRY_LIMIT: 3,
+        VISIBILITY_TIMEOUT_MS: 30000
+      },
+      dependencies: ["database"]
+    },
+    load_balancer: {
+      name: "load_balancer",
+      status: "healthy",
+      logs: [
+        "INFO backend=web_server healthy=true weight=50",
+        "INFO listener=https status=active tls_days_remaining=45"
+      ],
+      metrics: {
+        request_rate: 260,
+        backend_5xx_rate: 0.01,
+        healthy_backends: 2,
+        connection_utilization_pct: 42,
+        p95_latency_ms: 55
+      },
+      config: {
+        HEALTH_CHECK_PATH: "/healthz",
+        MAX_CONNECTIONS: 2000,
+        STICKY_SESSIONS: false,
+        WEB_WEIGHT_PRIMARY: 50
+      },
+      dependencies: ["web_server"]
     }
   };
 }
@@ -804,6 +867,7 @@ function initialMetrics(): EpisodeMetrics {
     evidenceActions: 0,
     remediationActions: 0,
     wrongRemediations: 0,
+    distractorFailures: 0,
     prematureResolutions: 0,
     success: false,
     finalReward: 0

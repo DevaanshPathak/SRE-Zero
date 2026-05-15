@@ -7,6 +7,7 @@ __pycache__/
 .coverage
 .env
 notes/
+eval/example_results.json
 htmlcov/
 build/
 dist/

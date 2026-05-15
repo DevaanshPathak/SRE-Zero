@@ -1,0 +1,69 @@
+{
+  "task_id": "message_queue_retry_limit_low",
+  "difficulty": "medium",
+  "alert": "Payment jobs are moving to the dead-letter queue after transient downstream errors.",
+  "root_cause": "message queue retry limit too low",
+  "root_cause_keywords": ["message queue", "retry", "dead letter"],
+  "relevant_evidence": [
+    "inspect_logs:message_queue",
+    "inspect_config:message_queue:RETRY_LIMIT",
+    "inspect_metrics:message_queue"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:message_queue": "Message queue logs show jobs dead-lettered after a single retry.",
+    "inspect_config:message_queue:RETRY_LIMIT": "Message queue config has RETRY_LIMIT set too low.",
+    "inspect_metrics:message_queue": "Message queue metrics show elevated dead-letter rate without publish failures."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "message_queue",
+    "key": "RETRY_LIMIT",
+    "min_numeric_value": 5,
+    "fix_keywords": ["retry", "limit"]
+  },
+  "service_patches": {
+    "message_queue": {
+      "logs": [
+        "WARN job=payment_capture retry_exhausted attempts=1",
+        "ERROR moved job=payment_capture to dead_letter_queue",
+        "INFO publish latency noisy_sample_ms=14"
+      ],
+      "metrics": {
+        "queue_depth": 430,
+        "oldest_message_age_ms": 19000,
+        "publish_error_rate": 0.0,
+        "consumer_lag_ms": 6000,
+        "dead_letter_rate": 0.18
+      },
+      "config": {
+        "RETRY_LIMIT": 1
+      }
+    },
+    "database": {
+      "logs": [
+        "WARN transient connection reset recovered=true",
+        "INFO connection pool healthy active=18 max=50"
+      ],
+      "metrics": {
+        "active_connections": 18,
+        "connection_wait_ms": 12,
+        "query_p95_latency_ms": 42
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(message_queue)",
+    "inspect_metrics(message_queue)",
+    "inspect_config(message_queue, RETRY_LIMIT)",
+    "update_config(message_queue, RETRY_LIMIT, 5)",
+    "resolve_incident(message queue retry limit too low, increase retry limit)"
+  ],
+  "distractors": [
+    "Database logs contain a transient warning, but the persistent failure is queue retry policy."
+  ],
+  "distractor_services": ["database"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

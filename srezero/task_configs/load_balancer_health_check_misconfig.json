@@ -1,0 +1,68 @@
+{
+  "task_id": "load_balancer_health_check_misconfig",
+  "difficulty": "easy",
+  "alert": "The edge is returning 503s after all web backends were marked unhealthy.",
+  "root_cause": "load balancer health check path misconfigured",
+  "root_cause_keywords": ["load balancer", "health check", "path"],
+  "relevant_evidence": [
+    "inspect_logs:load_balancer",
+    "inspect_config:load_balancer:HEALTH_CHECK_PATH",
+    "inspect_metrics:load_balancer"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:load_balancer": "Load balancer logs show healthy web backends failing the wrong health check path.",
+    "inspect_config:load_balancer:HEALTH_CHECK_PATH": "Load balancer config has HEALTH_CHECK_PATH set to /status instead of /healthz.",
+    "inspect_metrics:load_balancer": "Load balancer metrics show zero healthy backends while web metrics are otherwise normal."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "load_balancer",
+    "key": "HEALTH_CHECK_PATH",
+    "exact_value": "/healthz",
+    "fix_keywords": ["health check", "path"]
+  },
+  "service_patches": {
+    "load_balancer": {
+      "status": "degraded",
+      "logs": [
+        "ERROR backend=web_server marked_unhealthy path=/status code=404",
+        "ERROR no healthy backends available for listener=https",
+        "INFO tls handshake latency noisy_sample_ms=19"
+      ],
+      "metrics": {
+        "backend_5xx_rate": 0.31,
+        "healthy_backends": 0,
+        "connection_utilization_pct": 37,
+        "p95_latency_ms": 240
+      },
+      "config": {
+        "HEALTH_CHECK_PATH": "/status"
+      }
+    },
+    "web_server": {
+      "logs": [
+        "INFO request_id=8201 path=/healthz status=200 latency_ms=20",
+        "WARN health check path=/status status=404"
+      ],
+      "metrics": {
+        "error_rate": 0.01,
+        "p95_latency_ms": 95
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(load_balancer)",
+    "inspect_metrics(load_balancer)",
+    "inspect_config(load_balancer, HEALTH_CHECK_PATH)",
+    "update_config(load_balancer, HEALTH_CHECK_PATH, /healthz)",
+    "resolve_incident(load balancer health check path misconfigured, update health check path)"
+  ],
+  "distractors": [
+    "Restarting web_server can appear plausible because backends are unhealthy, but the path config is wrong."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

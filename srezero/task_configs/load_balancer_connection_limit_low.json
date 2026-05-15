@@ -1,0 +1,62 @@
+{
+  "task_id": "load_balancer_connection_limit_low",
+  "difficulty": "medium",
+  "alert": "The edge is returning intermittent 503s during a traffic spike.",
+  "root_cause": "load balancer maximum connections too low",
+  "root_cause_keywords": ["load balancer", "connections", "limit"],
+  "relevant_evidence": [
+    "inspect_metrics:load_balancer",
+    "inspect_config:load_balancer:MAX_CONNECTIONS"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:load_balancer": "Load balancer metrics show connection utilization pinned near 100 percent.",
+    "inspect_config:load_balancer:MAX_CONNECTIONS": "Load balancer config has MAX_CONNECTIONS too low for current traffic."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "load_balancer",
+    "key": "MAX_CONNECTIONS",
+    "min_numeric_value": 2000,
+    "fix_keywords": ["connection", "load balancer"]
+  },
+  "service_patches": {
+    "load_balancer": {
+      "logs": [
+        "WARN listener=https connection limit reached active=500",
+        "ERROR request rejected reason=max_connections",
+        "INFO backend health noisy_sample healthy=2"
+      ],
+      "metrics": {
+        "request_rate": 920,
+        "backend_5xx_rate": 0.04,
+        "healthy_backends": 2,
+        "connection_utilization_pct": 99,
+        "p95_latency_ms": 410
+      },
+      "config": {
+        "MAX_CONNECTIONS": 500
+      }
+    },
+    "web_server": {
+      "metrics": {
+        "request_rate": 780,
+        "error_rate": 0.02,
+        "p95_latency_ms": 140
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(load_balancer)",
+    "inspect_config(load_balancer, MAX_CONNECTIONS)",
+    "update_config(load_balancer, MAX_CONNECTIONS, 2500)",
+    "resolve_incident(load balancer maximum connections too low, increase load balancer connection limit)"
+  ],
+  "distractors": [
+    "Web metrics show elevated traffic, but web capacity is not the limiting component."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

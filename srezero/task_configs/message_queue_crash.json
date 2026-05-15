@@ -1,0 +1,65 @@
+{
+  "task_id": "message_queue_crash",
+  "difficulty": "easy",
+  "alert": "Background jobs are delayed and the message queue is not acknowledging publishes.",
+  "root_cause": "message queue service crashed",
+  "root_cause_keywords": ["message queue", "crashed", "publishes"],
+  "relevant_evidence": [
+    "check_status:message_queue",
+    "inspect_logs:message_queue",
+    "inspect_metrics:message_queue"
+  ],
+  "evidence_descriptions": {
+    "check_status:message_queue": "Message queue status is crashed.",
+    "inspect_logs:message_queue": "Message queue logs show the broker process exited after memory pressure.",
+    "inspect_metrics:message_queue": "Message queue metrics show publish errors and growing queue depth."
+  },
+  "correct_fix": {
+    "action_type": "restart_service",
+    "service": "message_queue",
+    "fix_keywords": ["restart", "message queue"]
+  },
+  "service_patches": {
+    "message_queue": {
+      "status": "crashed",
+      "logs": [
+        "ERROR broker process exited reason=oom_killed",
+        "ERROR publish failed reason=broker_unavailable",
+        "WARN disk watermark check noisy_sample=normal"
+      ],
+      "metrics": {
+        "queue_depth": 1840,
+        "oldest_message_age_ms": 92000,
+        "publish_error_rate": 1.0,
+        "consumer_lag_ms": 87000,
+        "dead_letter_rate": 0.02,
+        "cpu_steal_pct": 3
+      }
+    },
+    "web_server": {
+      "logs": [
+        "WARN async job publish timeout for request_id=8101",
+        "INFO request_id=8102 path=/ status=200 latency_ms=70"
+      ],
+      "metrics": {
+        "error_rate": 0.02,
+        "p95_latency_ms": 190
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "check_status(message_queue)",
+    "inspect_logs(message_queue)",
+    "inspect_metrics(message_queue)",
+    "restart_service(message_queue)",
+    "resolve_incident(message queue service crashed, restart message queue service)"
+  ],
+  "distractors": [
+    "Web logs contain publish timeouts, but the web server is only a symptom."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "task_id": "misleading_lb_502_cache_rootcause",
+  "difficulty": "hard",
+  "alert": "The load balancer is returning frequent 502s for product pages.",
+  "root_cause": "cache service crashed causing web upstream failures",
+  "root_cause_keywords": ["cache", "crashed", "502"],
+  "relevant_evidence": [
+    "inspect_logs:load_balancer",
+    "inspect_logs:web_server",
+    "check_status:cache"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:load_balancer": "Load balancer logs show 502s from web backends rather than edge health failures.",
+    "inspect_logs:web_server": "Web logs show upstream cache calls failing.",
+    "check_status:cache": "Cache status is crashed, which is the root cause."
+  },
+  "correct_fix": {
+    "action_type": "restart_service",
+    "service": "cache",
+    "fix_keywords": ["restart", "cache"]
+  },
+  "service_patches": {
+    "load_balancer": {
+      "logs": [
+        "ERROR backend=web_server returned status=502 path=/products",
+        "WARN upstream response reset by backend",
+        "INFO health checks passing noisy_sample=true"
+      ],
+      "metrics": {
+        "backend_5xx_rate": 0.27,
+        "healthy_backends": 2,
+        "connection_utilization_pct": 44,
+        "p95_latency_ms": 340
+      }
+    },
+    "web_server": {
+      "logs": [
+        "ERROR upstream cache request failed reason=connection_refused",
+        "ERROR request_id=8501 status=502 handler=/products"
+      ],
+      "metrics": {
+        "error_rate": 0.21,
+        "p95_latency_ms": 940,
+        "upstream_timeout_rate": 0.15
+      }
+    },
+    "cache": {
+      "status": "crashed",
+      "logs": [
+        "ERROR cache process exited signal=9",
+        "WARN health check failing"
+      ],
+      "metrics": {
+        "hit_rate": 0.0,
+        "p95_latency_ms": 0,
+        "memory_used_pct": 0
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(load_balancer)",
+    "inspect_logs(web_server)",
+    "check_status(cache)",
+    "restart_service(cache)",
+    "resolve_incident(cache service crashed causing web upstream failures, restart cache service)"
+  ],
+  "distractors": [
+    "Load balancer 502s are symptoms; changing edge config will not restore cache."
+  ],
+  "distractor_services": ["load_balancer"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

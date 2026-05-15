@@ -126,7 +126,7 @@ async function chooseAction(env: EnvConfig, observation: Observation): Promise<s
       content:
         "Choose the next action for this observation.\n" +
         JSON.stringify(observation, null, 2) +
-        "\n\nValid services: web_server, database, cache."
+        "\n\nValid services: web_server, database, cache, message_queue, load_balancer."
     }
   ]);
   return extractAction(response);

@@ -34,13 +34,25 @@ class RandomAgent:
         if action_type in {"inspect_logs", "inspect_metrics", "check_status", "restart_service"}:
             return Action(action_type=action_type, service=service)
         if action_type == "inspect_config":
-            key = self.rng.choice([None, "TIMEOUT_MS", "DB_POOL_SIZE", "TTL_SECONDS", "UNKNOWN"])
+            key = self.rng.choice(
+                [
+                    None,
+                    "TIMEOUT_MS",
+                    "DB_POOL_SIZE",
+                    "TTL_SECONDS",
+                    "CONSUMER_CONCURRENCY",
+                    "MAX_CONNECTIONS",
+                    "UNKNOWN",
+                ]
+            )
             return Action(action_type=action_type, service=service, key=key)
         if action_type == "update_config":
             service_key = {
                 "web_server": "TIMEOUT_MS",
                 "database": "DB_POOL_SIZE",
                 "cache": "TTL_SECONDS",
+                "message_queue": "CONSUMER_CONCURRENCY",
+                "load_balancer": "MAX_CONNECTIONS",
             }.get(service, "UNKNOWN")
             return Action(
                 action_type=action_type,
@@ -56,6 +68,8 @@ class RandomAgent:
                         "cache crashed",
                         "database pool exhaustion",
                         "web timeout misconfiguration",
+                        "message queue backlog",
+                        "load balancer misconfiguration",
                         "unknown root cause",
                     ]
                 ),
@@ -64,6 +78,8 @@ class RandomAgent:
                         "restart cache",
                         "increase database pool",
                         "increase web timeout",
+                        "increase queue consumers",
+                        "update load balancer config",
                         "no fix",
                     ]
                 ),
@@ -71,4 +87,6 @@ class RandomAgent:
         return Action(action_type="escalate", reason="random baseline escalation")
 
     def _service(self) -> str:
-        return self.rng.choice(["web_server", "database", "cache", "queue"])
+        return self.rng.choice(
+            ["web_server", "database", "cache", "message_queue", "load_balancer", "queue"]
+        )

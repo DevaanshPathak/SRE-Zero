@@ -1,0 +1,64 @@
+{
+  "task_id": "message_queue_visibility_timeout_low",
+  "difficulty": "medium",
+  "alert": "Workers are processing duplicate jobs and customer notifications are repeated.",
+  "root_cause": "message queue visibility timeout too low",
+  "root_cause_keywords": ["message queue", "visibility timeout", "duplicate"],
+  "relevant_evidence": [
+    "inspect_logs:message_queue",
+    "inspect_config:message_queue:VISIBILITY_TIMEOUT_MS",
+    "inspect_metrics:message_queue"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:message_queue": "Message queue logs show messages becoming visible again before workers finish.",
+    "inspect_config:message_queue:VISIBILITY_TIMEOUT_MS": "Message queue config has VISIBILITY_TIMEOUT_MS below job runtime.",
+    "inspect_metrics:message_queue": "Message queue metrics show duplicate delivery while publish errors are normal."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "message_queue",
+    "key": "VISIBILITY_TIMEOUT_MS",
+    "min_numeric_value": 30000,
+    "fix_keywords": ["visibility", "timeout"]
+  },
+  "service_patches": {
+    "message_queue": {
+      "logs": [
+        "WARN message_id=771 became_visible_before_ack runtime_ms=18000",
+        "WARN duplicate delivery detected message_id=771",
+        "INFO consumer heartbeat noisy_sample=ok"
+      ],
+      "metrics": {
+        "queue_depth": 720,
+        "oldest_message_age_ms": 42000,
+        "publish_error_rate": 0.0,
+        "consumer_lag_ms": 16000,
+        "duplicate_delivery_rate": 0.22
+      },
+      "config": {
+        "VISIBILITY_TIMEOUT_MS": 5000
+      }
+    },
+    "database": {
+      "metrics": {
+        "query_p95_latency_ms": 55,
+        "connection_wait_ms": 8
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(message_queue)",
+    "inspect_metrics(message_queue)",
+    "inspect_config(message_queue, VISIBILITY_TIMEOUT_MS)",
+    "update_config(message_queue, VISIBILITY_TIMEOUT_MS, 30000)",
+    "resolve_incident(message queue visibility timeout too low, increase visibility timeout)"
+  ],
+  "distractors": [
+    "Database metrics are normal despite duplicate work."
+  ],
+  "distractor_services": ["database"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

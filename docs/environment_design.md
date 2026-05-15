@@ -1,12 +1,14 @@
 # Environment Design
 
-SRE-Zero Mini is a deterministic, simulation-only environment for incident-response agents. It models a small service graph with three services:
+SRE-Zero Mini is a deterministic, simulation-only environment for incident-response agents. It models a small service graph with five services:
 
 - `web_server`
 - `database`
 - `cache`
+- `message_queue`
+- `load_balancer`
 
-Each service has simulated status, logs, metrics, configuration, and dependency metadata. Actions mutate only in-memory simulator state.
+Each service has simulated status, logs, metrics, configuration, and dependency metadata. Logs and metrics may include deterministic distractors or noisy-but-irrelevant values. Actions mutate only in-memory simulator state.
 
 Task definitions are deterministic JSON configs packaged under `srezero/task_configs/`. Difficulty splits are declared in `srezero/task_splits.json`.
 
@@ -40,7 +42,9 @@ Actions are represented by Pydantic `Action` objects and can also be submitted a
 inspect_logs(web_server)
 inspect_metrics(database)
 check_status(cache)
+inspect_metrics(message_queue)
 inspect_config(web_server, TIMEOUT_MS)
+inspect_config(load_balancer, MAX_CONNECTIONS)
 restart_service(cache)
 update_config(database, DB_POOL_SIZE, 100)
 resolve_incident(database connection pool exhaustion, increase database pool size)
@@ -48,6 +52,8 @@ escalate(need human operator)
 ```
 
 Invalid actions return controlled error observations and penalties. They never crash the environment.
+
+Wrong remediations against configured distractor services are tracked separately from general wrong fixes so evaluations can report distractor failure rate.
 
 ## Gym-Style API
 

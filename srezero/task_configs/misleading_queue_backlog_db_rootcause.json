@@ -1,0 +1,72 @@
+{
+  "task_id": "misleading_queue_backlog_db_rootcause",
+  "difficulty": "hard",
+  "alert": "Message queue backlog is growing and workers appear slow.",
+  "root_cause": "database read latency causing queue consumer backlog",
+  "root_cause_keywords": ["database", "latency", "queue"],
+  "relevant_evidence": [
+    "inspect_logs:message_queue",
+    "inspect_metrics:database",
+    "inspect_logs:database"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:message_queue": "Message queue logs show consumers blocked while writing database results.",
+    "inspect_metrics:database": "Database metrics show high read latency while queue publish health is normal.",
+    "inspect_logs:database": "Database logs show slow read queries backing up queue workers."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "READ_REPLICA_ENABLED",
+    "exact_value": true,
+    "fix_keywords": ["database", "read replica"]
+  },
+  "service_patches": {
+    "message_queue": {
+      "logs": [
+        "WARN consumer blocked waiting_on=database_write",
+        "WARN queue backlog increasing despite healthy broker",
+        "INFO publish ack noisy_sample_ms=13"
+      ],
+      "metrics": {
+        "queue_depth": 8800,
+        "oldest_message_age_ms": 310000,
+        "publish_error_rate": 0.0,
+        "consumer_lag_ms": 260000,
+        "dead_letter_rate": 0.0
+      }
+    },
+    "database": {
+      "logs": [
+        "WARN slow read query table=orders duration_ms=2400",
+        "WARN replica disabled read traffic pinned to primary",
+        "INFO connection count normal active=30 max=80"
+      ],
+      "metrics": {
+        "active_connections": 30,
+        "max_connections": 80,
+        "connection_wait_ms": 25,
+        "query_p95_latency_ms": 2300,
+        "read_iops_pct": 96
+      },
+      "config": {
+        "READ_REPLICA_ENABLED": false
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(message_queue)",
+    "inspect_metrics(database)",
+    "inspect_logs(database)",
+    "update_config(database, READ_REPLICA_ENABLED, true)",
+    "resolve_incident(database read latency causing queue consumer backlog, enable database read replica)"
+  ],
+  "distractors": [
+    "Increasing queue consumers may seem plausible but would add pressure to the saturated database."
+  ],
+  "distractor_services": ["message_queue"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

@@ -32,6 +32,8 @@ SERVICE_HINTS = {
     "web_server": ("web_server", "web server", "api", "timeout"),
     "database": ("database", "db", "connection", "query"),
     "cache": ("cache", "hit rate", "ttl", "eviction"),
+    "message_queue": ("message_queue", "message queue", "queue", "backlog", "consumer"),
+    "load_balancer": ("load_balancer", "load balancer", "balancer", "backend", "502"),
 }
 
 
@@ -132,7 +134,7 @@ def _system_prompt() -> str:
         "- update_config(service, key, value)\n"
         "- resolve_incident(root_cause, fix)\n"
         "- escalate(reason)\n\n"
-        "Valid services: web_server, database, cache."
+        "Valid services: web_server, database, cache, message_queue, load_balancer."
     )
 
 
@@ -146,7 +148,7 @@ def _react_system_prompt() -> str:
         "Action: <one valid action call>\n\n"
         "The action must include required arguments in parentheses. "
         "Bad: inspect_logs. Good: inspect_logs(web_server).\n\n"
-        "Valid services: web_server, database, cache."
+        "Valid services: web_server, database, cache, message_queue, load_balancer."
     )
 
 

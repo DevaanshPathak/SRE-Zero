@@ -1,5 +1,5 @@
 export type Difficulty = "easy" | "medium" | "hard";
-export type ServiceName = "web_server" | "database" | "cache";
+export type ServiceName = "web_server" | "database" | "cache" | "message_queue" | "load_balancer";
 export type ConfigValue = string | number | boolean;
 
 export type ActionType =
@@ -47,6 +47,7 @@ export interface EpisodeMetrics {
   evidenceActions: number;
   remediationActions: number;
   wrongRemediations: number;
+  distractorFailures: number;
   prematureResolutions: number;
   success: boolean;
   finalReward: number;
@@ -124,4 +125,3 @@ export interface ModelCompareResponse {
   taskId: string;
   results: ModelRunResult[];
 }
-

@@ -64,6 +64,7 @@ class IncidentTask:
     services: dict[ServiceName, Service]
     expected_action_pattern: tuple[str, ...] = ()
     distractors: tuple[str, ...] = ()
+    distractor_services: tuple[ServiceName, ...] = ()
     max_steps: int = 8
     terminal_on_wrong_resolution: bool = True
     metadata: dict[str, str] = field(default_factory=dict)

@@ -36,7 +36,7 @@ def base_services() -> dict[ServiceName, Service]:
                 "upstream_timeout_rate": 0.0,
             },
             config={"TIMEOUT_MS": 3000, "MAX_WORKERS": 16},
-            dependencies=["database", "cache"],
+            dependencies=["database", "cache", "message_queue"],
         ),
         "database": Service(
             name="database",
@@ -65,5 +65,48 @@ def base_services() -> dict[ServiceName, Service]:
             config={"TTL_SECONDS": 300, "MAX_MEMORY_MB": 512},
             dependencies=[],
         ),
+        "message_queue": Service(
+            name="message_queue",
+            status="healthy",
+            logs=[
+                "INFO queue=checkout_jobs consumers=8 backlog=24",
+                "INFO publish latency_ms=12 ack_rate=0.99",
+            ],
+            metrics={
+                "queue_depth": 24,
+                "oldest_message_age_ms": 1200,
+                "publish_error_rate": 0.0,
+                "consumer_lag_ms": 250,
+                "dead_letter_rate": 0.0,
+            },
+            config={
+                "CONSUMER_CONCURRENCY": 8,
+                "MAX_IN_FLIGHT": 500,
+                "RETRY_LIMIT": 3,
+                "VISIBILITY_TIMEOUT_MS": 30000,
+            },
+            dependencies=["database"],
+        ),
+        "load_balancer": Service(
+            name="load_balancer",
+            status="healthy",
+            logs=[
+                "INFO backend=web_server healthy=true weight=50",
+                "INFO listener=https status=active tls_days_remaining=45",
+            ],
+            metrics={
+                "request_rate": 260,
+                "backend_5xx_rate": 0.01,
+                "healthy_backends": 2,
+                "connection_utilization_pct": 42,
+                "p95_latency_ms": 55,
+            },
+            config={
+                "HEALTH_CHECK_PATH": "/healthz",
+                "MAX_CONNECTIONS": 2000,
+                "STICKY_SESSIONS": False,
+                "WEB_WEIGHT_PRIMARY": 50,
+            },
+            dependencies=["web_server"],
+        ),
     }
-

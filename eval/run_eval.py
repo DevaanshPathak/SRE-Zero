@@ -164,9 +164,9 @@ def main() -> None:
     parser.add_argument("--model", default=None, help="Override the .env model for this run.")
     parser.add_argument("--base-url", default=None, help="Override the .env base URL for this run.")
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default=None)
-    parser.add_argument("--output", type=Path, default=Path("eval/example_results.json"))
+    parser.add_argument("--output", type=Path, default=Path("notes/runs/eval_results.json"))
     args = parser.parse_args()
-    output_path = output_file_path(args.output, default_name="example_results.json")
+    output_path = output_file_path(args.output, default_name="eval_results.json")
 
     results = evaluate(
         agent_name=args.agent,

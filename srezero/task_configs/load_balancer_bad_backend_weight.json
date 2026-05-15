@@ -1,0 +1,68 @@
+{
+  "task_id": "load_balancer_bad_backend_weight",
+  "difficulty": "hard",
+  "alert": "After a traffic shift, one web backend is overloaded while another is mostly idle.",
+  "root_cause": "load balancer backend weight misconfigured",
+  "root_cause_keywords": ["load balancer", "weight", "backend"],
+  "relevant_evidence": [
+    "inspect_metrics:load_balancer",
+    "inspect_config:load_balancer:WEB_WEIGHT_PRIMARY",
+    "inspect_logs:web_server"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:load_balancer": "Load balancer metrics show almost all traffic routed to the primary backend.",
+    "inspect_config:load_balancer:WEB_WEIGHT_PRIMARY": "Load balancer config has WEB_WEIGHT_PRIMARY set to 100.",
+    "inspect_logs:web_server": "Web logs show primary backend overloaded while secondary is idle."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "load_balancer",
+    "key": "WEB_WEIGHT_PRIMARY",
+    "exact_value": 50,
+    "fix_keywords": ["load balancer", "weight"]
+  },
+  "service_patches": {
+    "load_balancer": {
+      "logs": [
+        "WARN traffic shift primary_weight=100 secondary_weight=0",
+        "INFO health checks pass for both backends",
+        "INFO cert rotation noisy_sample days_remaining=44"
+      ],
+      "metrics": {
+        "request_rate": 540,
+        "backend_5xx_rate": 0.08,
+        "healthy_backends": 2,
+        "connection_utilization_pct": 70,
+        "backend_skew_pct": 100
+      },
+      "config": {
+        "WEB_WEIGHT_PRIMARY": 100
+      }
+    },
+    "web_server": {
+      "logs": [
+        "WARN backend=primary worker saturation queue=88",
+        "INFO backend=secondary idle_workers=14"
+      ],
+      "metrics": {
+        "p95_latency_ms": 1200,
+        "error_rate": 0.08
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(load_balancer)",
+    "inspect_config(load_balancer, WEB_WEIGHT_PRIMARY)",
+    "inspect_logs(web_server)",
+    "update_config(load_balancer, WEB_WEIGHT_PRIMARY, 50)",
+    "resolve_incident(load balancer backend weight misconfigured, rebalance load balancer weight)"
+  ],
+  "distractors": [
+    "Restarting web_server does not correct the routing weight that overloads one backend."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

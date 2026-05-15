@@ -6,7 +6,7 @@ def test_phase1_task_count_and_splits() -> None:
     task_ids = list_task_ids()
     splits = task_splits()
 
-    assert len(task_ids) == 15
+    assert len(task_ids) == 25
     assert 15 <= len(task_ids) <= 30
     assert set(splits) == {"easy", "medium", "hard"}
     assert all(splits.values())
@@ -24,6 +24,16 @@ def test_each_task_can_reset_and_expose_safe_observation() -> None:
         assert task.root_cause not in observation.model_dump_json()
         assert observation.steps_remaining == task.max_steps
         assert task.metadata["source"] == "config"
+
+
+def test_expanded_services_are_available() -> None:
+    env = SREEnv()
+    env.reset(task_id="message_queue_crash", seed=0)
+
+    state = env.current_state()
+
+    assert "message_queue" in state["services"]
+    assert "load_balancer" in state["services"]
 
 
 def test_metrics_are_computed() -> None:

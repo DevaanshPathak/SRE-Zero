@@ -3,7 +3,10 @@
     "cache_crash",
     "web_worker_crash",
     "database_disk_full",
-    "cache_memory_pressure"
+    "cache_memory_pressure",
+    "message_queue_crash",
+    "load_balancer_health_check_misconfig",
+    "message_queue_backlog_consumers_low"
   ],
   "medium": [
     "db_pool_exhaustion",
@@ -11,14 +14,20 @@
     "db_slow_queries_missing_index",
     "web_worker_saturation",
     "cache_eviction_storm",
-    "db_query_timeout_low"
+    "db_query_timeout_low",
+    "load_balancer_connection_limit_low",
+    "message_queue_retry_limit_low",
+    "load_balancer_sticky_session_hotspot",
+    "message_queue_visibility_timeout_low"
   ],
   "hard": [
     "web_timeout_misconfig",
     "misleading_web_500_db_rootcause",
     "web_cache_host_misconfig",
     "cascading_db_latency",
-    "cache_disabled_config_regression"
+    "cache_disabled_config_regression",
+    "misleading_queue_backlog_db_rootcause",
+    "misleading_lb_502_cache_rootcause",
+    "load_balancer_bad_backend_weight"
   ]
 }
-

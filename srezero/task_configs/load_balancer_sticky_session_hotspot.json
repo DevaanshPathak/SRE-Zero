@@ -1,0 +1,68 @@
+{
+  "task_id": "load_balancer_sticky_session_hotspot",
+  "difficulty": "medium",
+  "alert": "A subset of users sees high latency while overall traffic volume is normal.",
+  "root_cause": "load balancer sticky sessions causing backend hotspot",
+  "root_cause_keywords": ["load balancer", "sticky", "hotspot"],
+  "relevant_evidence": [
+    "inspect_metrics:load_balancer",
+    "inspect_config:load_balancer:STICKY_SESSIONS",
+    "inspect_logs:web_server"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:load_balancer": "Load balancer metrics show severe backend traffic skew.",
+    "inspect_config:load_balancer:STICKY_SESSIONS": "Load balancer config has STICKY_SESSIONS enabled.",
+    "inspect_logs:web_server": "Web logs show one backend overloaded while other workers are idle."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "load_balancer",
+    "key": "STICKY_SESSIONS",
+    "exact_value": false,
+    "fix_keywords": ["sticky", "sessions"]
+  },
+  "service_patches": {
+    "load_balancer": {
+      "logs": [
+        "WARN backend traffic skew primary=92 secondary=8",
+        "INFO sticky session table size=91000",
+        "INFO tls session reuse noisy_sample=normal"
+      ],
+      "metrics": {
+        "request_rate": 310,
+        "backend_5xx_rate": 0.03,
+        "healthy_backends": 2,
+        "connection_utilization_pct": 55,
+        "backend_skew_pct": 92
+      },
+      "config": {
+        "STICKY_SESSIONS": true
+      }
+    },
+    "web_server": {
+      "logs": [
+        "WARN backend=primary worker queue high",
+        "INFO backend=secondary worker queue low"
+      ],
+      "metrics": {
+        "p95_latency_ms": 880,
+        "error_rate": 0.04
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(load_balancer)",
+    "inspect_config(load_balancer, STICKY_SESSIONS)",
+    "inspect_logs(web_server)",
+    "update_config(load_balancer, STICKY_SESSIONS, false)",
+    "resolve_incident(load balancer sticky sessions causing backend hotspot, disable sticky sessions)"
+  ],
+  "distractors": [
+    "Restarting web_server may temporarily move sessions but does not fix the balancing policy."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

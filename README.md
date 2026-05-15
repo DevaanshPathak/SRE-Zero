@@ -2,7 +2,7 @@
 
 SRE-Zero is an early-stage research benchmark for studying reliable tool-using LLM agents in simulated incident-response workflows.
 
-The v0.1 repository contains **SRE-Zero Mini**, a deterministic environment where agents diagnose incidents across simulated `web_server`, `database`, and `cache` services. Agents inspect logs, metrics, status, and config, then apply minimal in-memory remediations under a step budget.
+The v0.1 repository contains **SRE-Zero Mini**, a deterministic environment where agents diagnose incidents across simulated `web_server`, `database`, `cache`, `message_queue`, and `load_balancer` services. Agents inspect logs, metrics, status, and config, then apply minimal in-memory remediations under a step budget.
 
 This is early research code. It is intentionally small, safe, and simulation-only. It does not control real infrastructure or execute arbitrary shell commands. External LLM APIs are optional and are only called when an LLM baseline is explicitly selected.
 
@@ -126,6 +126,12 @@ Use a smaller smoke preset:
 python eval/run_all_eval.py --preset quick --timeout-seconds 60
 ```
 
+Create basic SVG plots from a combined results JSON:
+
+```bash
+python eval/plot_results.py --input notes/runs/all_eval_summary.json --output-dir notes/plots/latest
+```
+
 Disable the log file or choose a custom path:
 
 ```bash
@@ -153,7 +159,7 @@ ruff check .
 
 ## Task Suite Summary
 
-SRE-Zero Mini v0.1 includes 15 deterministic incident tasks backed by JSON configs in `srezero/task_configs/`.
+SRE-Zero Mini v0.1 includes 25 deterministic incident tasks backed by JSON configs in `srezero/task_configs/`.
 
 | Task | Difficulty | Root Cause |
 | --- | --- | --- |
@@ -172,12 +178,22 @@ SRE-Zero Mini v0.1 includes 15 deterministic incident tasks backed by JSON confi
 | `web_cache_host_misconfig` | hard | Web cache host configuration is wrong |
 | `cascading_db_latency` | hard | Database read latency causing cascading latency |
 | `cache_disabled_config_regression` | hard | Web cache usage disabled by config regression |
+| `message_queue_crash` | easy | Message queue service crashed |
+| `load_balancer_health_check_misconfig` | easy | Load balancer health check path misconfigured |
+| `message_queue_backlog_consumers_low` | easy | Message queue consumer concurrency too low |
+| `load_balancer_connection_limit_low` | medium | Load balancer maximum connections too low |
+| `message_queue_retry_limit_low` | medium | Message queue retry limit too low |
+| `load_balancer_sticky_session_hotspot` | medium | Sticky sessions causing backend hotspot |
+| `message_queue_visibility_timeout_low` | medium | Message queue visibility timeout too low |
+| `misleading_queue_backlog_db_rootcause` | hard | Database latency causing queue backlog |
+| `misleading_lb_502_cache_rootcause` | hard | Cache crash causing load-balancer 502s |
+| `load_balancer_bad_backend_weight` | hard | Load balancer backend weight misconfigured |
 
 Formal split files:
 
-- `easy`: 4 tasks
-- `medium`: 6 tasks
-- `hard`: 5 tasks
+- `easy`: 7 tasks
+- `medium`: 10 tasks
+- `hard`: 8 tasks
 
 The split manifest is `srezero/task_splits.json`.
 
@@ -256,6 +272,7 @@ The root `start-frontend.sh` script starts the Next dev server. The root `start-
 - [x] Add deterministic task configs
 - [x] Add reward functions
 - [x] Add evaluation metrics
+- [x] Add basic result plotting
 
 ## Citation
 

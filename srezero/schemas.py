@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ServiceName = Literal["web_server", "database", "cache"]
+ServiceName = Literal["web_server", "database", "cache", "message_queue", "load_balancer"]
 ActionType = Literal[
     "inspect_logs",
     "inspect_metrics",

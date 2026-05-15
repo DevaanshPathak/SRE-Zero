@@ -31,3 +31,12 @@ def test_wrong_remediation_penalty_is_recorded() -> None:
     assert env.metrics.wrong_remediations == 1
     assert result.info["reward_components"]["penalties"]["wrong_remediation"] < 0
 
+
+def test_distractor_failure_metric_is_recorded() -> None:
+    env = SREEnv()
+    env.reset(task_id="misleading_web_500_db_rootcause", seed=0)
+
+    result = env.step(Action(action_type="restart_service", service="web_server"))
+
+    assert env.metrics.distractor_failures == 1
+    assert result.info["metrics_so_far"]["distractor_failures"] == 1

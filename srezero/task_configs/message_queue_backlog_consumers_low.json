@@ -1,0 +1,62 @@
+{
+  "task_id": "message_queue_backlog_consumers_low",
+  "difficulty": "easy",
+  "alert": "Async notifications are delayed and queue depth is rising steadily.",
+  "root_cause": "message queue consumer concurrency too low",
+  "root_cause_keywords": ["message queue", "consumer", "concurrency"],
+  "relevant_evidence": [
+    "inspect_metrics:message_queue",
+    "inspect_config:message_queue:CONSUMER_CONCURRENCY"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:message_queue": "Message queue metrics show high queue depth and oldest message age.",
+    "inspect_config:message_queue:CONSUMER_CONCURRENCY": "Message queue config has CONSUMER_CONCURRENCY too low for the backlog."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "message_queue",
+    "key": "CONSUMER_CONCURRENCY",
+    "min_numeric_value": 16,
+    "fix_keywords": ["consumer", "concurrency"]
+  },
+  "service_patches": {
+    "message_queue": {
+      "logs": [
+        "WARN queue=notifications backlog increasing for 10m",
+        "INFO consumers active=4",
+        "WARN retry noise sample downstream_email=slow"
+      ],
+      "metrics": {
+        "queue_depth": 6200,
+        "oldest_message_age_ms": 210000,
+        "consumer_lag_ms": 160000,
+        "publish_error_rate": 0.0,
+        "dead_letter_rate": 0.01
+      },
+      "config": {
+        "CONSUMER_CONCURRENCY": 4
+      }
+    },
+    "cache": {
+      "metrics": {
+        "hit_rate": 0.9,
+        "p95_latency_ms": 8,
+        "memory_used_pct": 49
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(message_queue)",
+    "inspect_config(message_queue, CONSUMER_CONCURRENCY)",
+    "update_config(message_queue, CONSUMER_CONCURRENCY, 16)",
+    "resolve_incident(message queue consumer concurrency too low, increase consumer concurrency)"
+  ],
+  "distractors": [
+    "Cache metrics include normal noise but are not related to queue backlog."
+  ],
+  "distractor_services": ["cache"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}

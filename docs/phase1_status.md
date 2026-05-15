@@ -9,12 +9,14 @@ Current status: implemented for the Phase 1 simulator baseline.
 - [x] Add deterministic task configs
 - [x] Add reward functions
 - [x] Add evaluation metrics
+- [x] Add basic result plotting
+- [x] Expand services to include message queue and load balancer
 
 Notes:
 
-- The current suite has 15 deterministic tasks, which is the lower bound of the Phase 1 target range.
+- The current suite has 25 deterministic tasks across `web_server`, `database`, `cache`, `message_queue`, and `load_balancer`.
 - Task definitions are JSON configs under `srezero/task_configs/`.
 - The split manifest is `srezero/task_splits.json`.
+- Distractor services are tracked for distractor failure rate in aggregate metrics.
 - `SREEnv` remains the primary benchmark API.
 - `SREOpenEnv` provides a Gym-style wrapper without requiring Gymnasium as a dependency.
-

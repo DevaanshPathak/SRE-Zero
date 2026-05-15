@@ -60,9 +60,9 @@
   "distractors": [
     "Restarting web_server may look plausible but does not address database saturation."
   ],
+  "distractor_services": ["web_server"],
   "max_steps": 8,
   "metadata": {
     "source": "config"
   }
 }
-

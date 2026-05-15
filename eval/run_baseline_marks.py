@@ -45,6 +45,7 @@ ZERO_OVERALL = {
     "invalid_action_rate": 0.0,
     "evidence_coverage": 0.0,
     "wrong_remediation_rate": 0.0,
+    "distractor_failure_rate": 0.0,
     "premature_resolution_rate": 0.0,
 }
 
@@ -256,6 +257,7 @@ def make_mark_row(result: Mapping[str, Any], *, target_steps: float) -> dict[str
             "invalid_action_rate": invalid_action_rate,
             "evidence_coverage": evidence_coverage,
             "wrong_remediation_rate": metric(overall, "wrong_remediation_rate"),
+            "distractor_failure_rate": metric(overall, "distractor_failure_rate"),
             "premature_resolution_rate": metric(overall, "premature_resolution_rate"),
         },
         "agent_error_count": agent_error_count,

@@ -47,6 +47,7 @@ class IncidentTaskConfig(BaseModel):
     service_patches: dict[ServiceName, ServicePatchConfig]
     expected_action_pattern: list[str] = Field(default_factory=list)
     distractors: list[str] = Field(default_factory=list)
+    distractor_services: list[ServiceName] = Field(default_factory=list)
     max_steps: int = 8
     terminal_on_wrong_resolution: bool = True
     metadata: dict[str, str] = Field(default_factory=dict)
@@ -83,6 +84,7 @@ def build_task_from_config(config: IncidentTaskConfig) -> IncidentTask:
         services=services,
         expected_action_pattern=tuple(config.expected_action_pattern),
         distractors=tuple(config.distractors),
+        distractor_services=tuple(config.distractor_services),
         max_steps=config.max_steps,
         terminal_on_wrong_resolution=config.terminal_on_wrong_resolution,
         metadata=dict(config.metadata),
@@ -100,4 +102,3 @@ def _apply_patch(service: Service, patch: ServicePatchConfig) -> None:
         service.config.update(patch.config)
     if patch.dependencies is not None:
         service.dependencies = list(patch.dependencies)
-
