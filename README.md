@@ -100,6 +100,18 @@ python eval/run_baseline_marks.py --baselines all --episodes 1 --output notes/ru
 python eval/run_baseline_marks.py --baselines prompting react --models openai/gpt-5-mini openai/gpt-5.4-mini
 ```
 
+Run only non-API baselines:
+
+```bash
+python eval/run_baseline_marks.py --baselines all --no-api --episodes 3
+```
+
+Run one baseline episode and save its trajectory:
+
+```bash
+python eval/run_agent.py --agent scripted --task misleading_web_500_db_rootcause
+```
+
 Run the full default sweep:
 
 ```bash
@@ -244,6 +256,9 @@ The root `start-frontend.sh` script starts the Next dev server. The root `start-
 - `ReActBaselineAgent`: keeps a compact Thought/Action history across an episode and calls an OpenAI-compatible chat completions endpoint.
 - `OpenSourceLLMBaselineAgent`: prompting profile intended for local or hosted open-source OpenAI-compatible servers.
 - `FrontierLLMBaselineAgent`: ReAct profile intended for hosted frontier models.
+
+Prompt templates, agent-runner notes, baseline result table guidance, and failure
+examples are documented in `docs/baseline_agents.md`.
 
 ## Baseline Checklist
 

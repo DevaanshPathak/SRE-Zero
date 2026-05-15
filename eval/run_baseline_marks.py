@@ -54,6 +54,10 @@ def main() -> None:
     args = parse_args()
     args.output = output_file_path(args.output, default_name="baseline_marks.json")
     baselines = expand_baselines(args.baselines)
+    skipped_baselines: list[str] = []
+    if args.no_api:
+        skipped_baselines = [baseline for baseline in baselines if baseline in LLM_BASELINES]
+        baselines = [baseline for baseline in baselines if baseline not in LLM_BASELINES]
     models = args.models or []
     runs: list[dict[str, Any]] = []
     mark_rows: list[dict[str, Any]] = []
@@ -78,6 +82,8 @@ def main() -> None:
         "generated_at": datetime.now(UTC).isoformat(),
         "config": {
             "baselines": baselines,
+            "skipped_baselines": skipped_baselines,
+            "no_api": args.no_api,
             "models": models,
             "episodes_per_task": args.episodes,
             "seed": args.seed,
@@ -103,6 +109,8 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(output, indent=2), encoding="utf-8")
     print_marks(mark_rows, args.output)
+    if skipped_baselines:
+        print(f"Skipped API-backed baselines due to --no-api: {', '.join(skipped_baselines)}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -128,6 +136,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--base-url", default=None, help="Optional provider base URL override.")
+    parser.add_argument(
+        "--no-api",
+        action="store_true",
+        help="Skip API-backed LLM baselines even if selected.",
+    )
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default=None)
     parser.add_argument(
         "--target-steps",

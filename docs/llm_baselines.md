@@ -2,6 +2,9 @@
 
 SRE-Zero Mini includes optional OpenAI-compatible LLM baselines. They are disabled unless selected through the evaluation CLI.
 
+For the full baseline taxonomy, prompt-template notes, no-API runner, and
+failure examples, see `docs/baseline_agents.md`.
+
 ## Configuration
 
 Create a local `.env` from `.env.example`:
@@ -37,4 +40,3 @@ Optional per-baseline model variables:
 - Frontier model: `python eval/run_eval.py --agent frontier --episodes 1`
 
 LLM baseline results depend on the configured provider, model, decoding settings, and endpoint behavior. For benchmark reporting, record the `.env` model variables, provider type, seed, and episode count.
-

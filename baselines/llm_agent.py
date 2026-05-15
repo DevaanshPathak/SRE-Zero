@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 
+from baselines.prompts import template_for_profile
 from srezero.actions import parse_action
 from srezero.llm_config import LLMConfig, LLMProfile, OpenAICompatibleChatClient
 from srezero.schemas import Action, Observation
@@ -55,13 +56,10 @@ class PromptingBaselineAgent:
 
     def act(self, observation: Observation) -> Action | str:
         messages = [
-            {"role": "system", "content": _system_prompt()},
+            {"role": "system", "content": template_for_profile("prompting").system},
             {
                 "role": "user",
-                "content": (
-                    "Choose the next incident-response action from this observation.\n"
-                    f"{_observation_json(observation)}"
-                ),
+                "content": template_for_profile("prompting").user_message(observation),
             },
         ]
         response = self.client.complete(messages)
@@ -83,7 +81,7 @@ class ReActBaselineAgent:
         self.messages: list[dict[str, str]] = []
 
     def reset(self) -> None:
-        self.messages = [{"role": "system", "content": _react_system_prompt()}]
+        self.messages = [{"role": "system", "content": template_for_profile("react").system}]
 
     def act(self, observation: Observation) -> Action | str:
         if not self.messages:
@@ -92,8 +90,7 @@ class ReActBaselineAgent:
             {
                 "role": "user",
                 "content": (
-                    "Observation:\n"
-                    f"{_observation_json(observation)}\n\n"
+                    f"{template_for_profile('react').user_message(observation)}\n\n"
                     "Respond with one brief Thought and one Action."
                 ),
             }
@@ -115,45 +112,6 @@ class FrontierLLMBaselineAgent(ReActBaselineAgent):
 
     def __init__(self, *, config: LLMConfig | None = None) -> None:
         super().__init__(profile="frontier", config=config)
-
-
-def _system_prompt() -> str:
-    return (
-        "You are evaluating SRE-Zero, a simulated incident-response benchmark. "
-        "Use only the available simulator actions. Do not invent tools. "
-        "Gather evidence before remediation. Apply minimal fixes. "
-        "Return exactly one action call and no extra text.\n\n"
-        "The action must include required arguments in parentheses. "
-        "Bad: inspect_metrics. Good: inspect_metrics(cache).\n\n"
-        "Allowed actions:\n"
-        "- inspect_logs(service)\n"
-        "- inspect_metrics(service)\n"
-        "- check_status(service)\n"
-        "- inspect_config(service, key?)\n"
-        "- restart_service(service)\n"
-        "- update_config(service, key, value)\n"
-        "- resolve_incident(root_cause, fix)\n"
-        "- escalate(reason)\n\n"
-        "Valid services: web_server, database, cache, message_queue, load_balancer."
-    )
-
-
-def _react_system_prompt() -> str:
-    return (
-        "You are evaluating SRE-Zero, a simulated incident-response benchmark. "
-        "Use ReAct style internally, but only one simulator action may be issued per turn. "
-        "Do not invent tools. Gather evidence before remediation. Apply minimal fixes.\n\n"
-        "Respond in this format:\n"
-        "Thought: <brief reasoning>\n"
-        "Action: <one valid action call>\n\n"
-        "The action must include required arguments in parentheses. "
-        "Bad: inspect_logs. Good: inspect_logs(web_server).\n\n"
-        "Valid services: web_server, database, cache, message_queue, load_balancer."
-    )
-
-
-def _observation_json(observation: Observation) -> str:
-    return json.dumps(observation.model_dump(mode="json"), indent=2)
 
 
 def _extract_action(response: str, observation: Observation | None = None) -> Action | str:
