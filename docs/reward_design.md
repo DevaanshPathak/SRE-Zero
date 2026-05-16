@@ -29,3 +29,16 @@ Evidence credit is proportional to relevant evidence coverage. Efficiency is awa
 
 Reward internals are returned in `StepResult.info["reward_components"]` for benchmark analysis, but they are not part of the agent-visible observation.
 
+## Standard Marks Score
+
+The episode reward is not the only paper-level score. Aggregate benchmark runs
+also use the standardized 100-point marks score from `srezero/scoring.py`:
+
+- success rate: 40 points
+- mean partial reward: 25 points
+- evidence coverage: 20 points
+- efficiency: 10 points
+- validity: 5 points
+
+The marks score is intended for compact result tables. Raw metrics should still
+be reported for analysis.

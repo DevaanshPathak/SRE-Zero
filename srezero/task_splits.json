@@ -6,7 +6,11 @@
     "cache_memory_pressure",
     "message_queue_crash",
     "load_balancer_health_check_misconfig",
-    "message_queue_backlog_consumers_low"
+    "message_queue_backlog_consumers_low",
+    "web_server_memory_leak_restart",
+    "database_maintenance_mode_left_on",
+    "cache_auth_token_expired",
+    "load_balancer_tls_cert_expired"
   ],
   "medium": [
     "db_pool_exhaustion",
@@ -18,7 +22,13 @@
     "load_balancer_connection_limit_low",
     "message_queue_retry_limit_low",
     "load_balancer_sticky_session_hotspot",
-    "message_queue_visibility_timeout_low"
+    "message_queue_visibility_timeout_low",
+    "web_rate_limit_too_low",
+    "database_autovacuum_disabled",
+    "cache_compression_disabled",
+    "message_queue_max_in_flight_low",
+    "load_balancer_idle_timeout_low",
+    "web_queue_publish_timeout_low"
   ],
   "hard": [
     "web_timeout_misconfig",
@@ -28,6 +38,67 @@
     "cache_disabled_config_regression",
     "misleading_queue_backlog_db_rootcause",
     "misleading_lb_502_cache_rootcause",
-    "load_balancer_bad_backend_weight"
+    "load_balancer_bad_backend_weight",
+    "misleading_cache_miss_db_index_rootcause",
+    "misleading_lb_503_web_worker_rootcause",
+    "message_queue_poison_message_retry_storm",
+    "database_read_replica_disabled_misleading_cache",
+    "misleading_web_timeouts_lb_idle_timeout"
+  ],
+  "train": [
+    "cache_crash",
+    "web_worker_crash",
+    "database_disk_full",
+    "message_queue_crash",
+    "message_queue_backlog_consumers_low",
+    "db_pool_exhaustion",
+    "cache_latency_degradation",
+    "db_slow_queries_missing_index",
+    "web_worker_saturation",
+    "cache_eviction_storm",
+    "load_balancer_connection_limit_low",
+    "web_timeout_misconfig",
+    "misleading_web_500_db_rootcause",
+    "web_cache_host_misconfig",
+    "misleading_lb_502_cache_rootcause",
+    "web_server_memory_leak_restart",
+    "database_maintenance_mode_left_on",
+    "load_balancer_tls_cert_expired",
+    "web_rate_limit_too_low",
+    "cache_compression_disabled",
+    "message_queue_max_in_flight_low",
+    "web_queue_publish_timeout_low",
+    "misleading_lb_503_web_worker_rootcause",
+    "database_read_replica_disabled_misleading_cache"
+  ],
+  "dev": [
+    "cache_memory_pressure",
+    "load_balancer_health_check_misconfig",
+    "db_query_timeout_low",
+    "message_queue_retry_limit_low",
+    "load_balancer_sticky_session_hotspot",
+    "cache_auth_token_expired",
+    "database_autovacuum_disabled",
+    "load_balancer_idle_timeout_low"
+  ],
+  "test": [
+    "message_queue_visibility_timeout_low",
+    "cascading_db_latency",
+    "cache_disabled_config_regression",
+    "misleading_queue_backlog_db_rootcause",
+    "load_balancer_bad_backend_weight",
+    "misleading_cache_miss_db_index_rootcause",
+    "message_queue_poison_message_retry_storm",
+    "misleading_web_timeouts_lb_idle_timeout"
+  ],
+  "unseen_incident": [
+    "message_queue_visibility_timeout_low",
+    "cascading_db_latency",
+    "cache_disabled_config_regression",
+    "misleading_queue_backlog_db_rootcause",
+    "load_balancer_bad_backend_weight",
+    "misleading_cache_miss_db_index_rootcause",
+    "message_queue_poison_message_retry_storm",
+    "misleading_web_timeouts_lb_idle_timeout"
   ]
 }

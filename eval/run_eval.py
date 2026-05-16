@@ -18,7 +18,8 @@ if str(ROOT) not in sys.path:
 from baselines import AGENT_CHOICES, Agent, build_agent  # noqa: E402
 from srezero.env import SREEnv  # noqa: E402
 from srezero.metrics import aggregate_episode_records  # noqa: E402
-from srezero.task_registry import Difficulty, list_task_ids  # noqa: E402
+from srezero.scoring import score_metrics  # noqa: E402
+from srezero.task_registry import BenchmarkSplit, Difficulty, list_task_ids  # noqa: E402
 
 ProgressCallback = Callable[[str, int, int, int, int, str], None]
 
@@ -68,11 +69,12 @@ def evaluate(
     model_override: str | None = None,
     base_url_override: str | None = None,
     difficulty: Difficulty | None = None,
+    split: BenchmarkSplit | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, object]:
     records: list[dict[str, object]] = []
     by_task: dict[str, dict[str, float]] = {}
-    task_ids = list_task_ids(difficulty=difficulty)
+    task_ids = list_task_ids(difficulty=difficulty, split=split)
 
     for task_index, task_id in enumerate(task_ids):
         task_records = []
@@ -107,6 +109,7 @@ def evaluate(
                 )
         by_task[task_id] = aggregate_episode_records(task_records)
 
+    overall = aggregate_episode_records(records)
     return {
         "agent": agent_name,
         "episodes_per_task": episodes,
@@ -114,7 +117,9 @@ def evaluate(
         "model_override": model_override,
         "base_url_override": base_url_override,
         "difficulty": difficulty,
-        "overall": aggregate_episode_records(records),
+        "split": split,
+        "overall": overall,
+        "standard_score": score_metrics(overall).model_dump(),
         "by_task": by_task,
         "records": records,
     }
@@ -164,6 +169,12 @@ def main() -> None:
     parser.add_argument("--model", default=None, help="Override the .env model for this run.")
     parser.add_argument("--base-url", default=None, help="Override the .env base URL for this run.")
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default=None)
+    parser.add_argument(
+        "--split",
+        choices=["train", "dev", "test", "unseen_incident"],
+        default=None,
+        help="Optional benchmark split. Can be combined with --difficulty.",
+    )
     parser.add_argument("--output", type=Path, default=Path("notes/runs/eval_results.json"))
     args = parser.parse_args()
     output_path = output_file_path(args.output, default_name="eval_results.json")
@@ -175,6 +186,7 @@ def main() -> None:
         model_override=args.model,
         base_url_override=args.base_url,
         difficulty=args.difficulty,
+        split=args.split,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")

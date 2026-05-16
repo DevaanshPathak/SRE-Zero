@@ -29,25 +29,11 @@ from run_eval import ProgressCallback, evaluate  # noqa: E402
 
 from baselines import AGENT_CHOICES  # noqa: E402
 from srezero.llm_config import load_env_file  # noqa: E402
+from srezero.scoring import STANDARD_MARK_WEIGHTS, ZERO_METRICS, score_metrics  # noqa: E402
 
 LLM_BASELINES = {"prompting", "react", "open_source", "frontier"}
-MARK_WEIGHTS = {
-    "success": 40.0,
-    "reward": 25.0,
-    "evidence": 20.0,
-    "efficiency": 10.0,
-    "validity": 5.0,
-}
-ZERO_OVERALL = {
-    "success_rate": 0.0,
-    "mean_reward": 0.0,
-    "mean_steps": 0.0,
-    "invalid_action_rate": 0.0,
-    "evidence_coverage": 0.0,
-    "wrong_remediation_rate": 0.0,
-    "distractor_failure_rate": 0.0,
-    "premature_resolution_rate": 0.0,
-}
+MARK_WEIGHTS = STANDARD_MARK_WEIGHTS
+ZERO_OVERALL = ZERO_METRICS
 
 
 def main() -> None:
@@ -72,6 +58,7 @@ def main() -> None:
                 seed=args.seed,
                 base_url_override=args.base_url,
                 difficulty=args.difficulty,
+                split=args.split,
             )
             runs.append(result)
             mark_rows.append(make_mark_row(result, target_steps=args.target_steps))
@@ -88,6 +75,7 @@ def main() -> None:
             "episodes_per_task": args.episodes,
             "seed": args.seed,
             "difficulty": args.difficulty,
+            "split": args.split,
             "target_steps": args.target_steps,
         },
         "marks_formula": {
@@ -142,6 +130,12 @@ def parse_args() -> argparse.Namespace:
         help="Skip API-backed LLM baselines even if selected.",
     )
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default=None)
+    parser.add_argument(
+        "--split",
+        choices=["train", "dev", "test", "unseen_incident"],
+        default=None,
+        help="Optional benchmark split. Can be combined with --difficulty.",
+    )
     parser.add_argument(
         "--target-steps",
         type=float,
@@ -201,6 +195,7 @@ def run_one(
     seed: int,
     base_url_override: str | None,
     difficulty: str | None,
+    split: str | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     try:
@@ -211,6 +206,7 @@ def run_one(
             model_override=model_override,
             base_url_override=base_url_override,
             difficulty=difficulty,  # type: ignore[arg-type]
+            split=split,  # type: ignore[arg-type]
             progress_callback=progress_callback,
         )
     except Exception as exc:  # noqa: BLE001
@@ -221,6 +217,7 @@ def run_one(
             "model_override": model_override,
             "base_url_override": base_url_override,
             "difficulty": difficulty,
+            "split": split,
             "overall": ZERO_OVERALL,
             "by_task": {},
             "records": [],
@@ -234,24 +231,7 @@ def run_one(
 
 def make_mark_row(result: Mapping[str, Any], *, target_steps: float) -> dict[str, Any]:
     overall = as_mapping(result.get("overall"))
-    success_rate = metric(overall, "success_rate")
-    mean_reward = metric(overall, "mean_reward")
-    evidence_coverage = metric(overall, "evidence_coverage")
-    invalid_action_rate = metric(overall, "invalid_action_rate")
-    mean_steps = metric(overall, "mean_steps")
-    efficiency_rate = success_rate * max(
-        0.0,
-        1.0 - max(0.0, mean_steps - 1.0) / max(1.0, target_steps - 1.0),
-    )
-    validity_rate = max(0.0, 1.0 - invalid_action_rate)
-    components = {
-        "success": success_rate * MARK_WEIGHTS["success"],
-        "reward": mean_reward * MARK_WEIGHTS["reward"],
-        "evidence": evidence_coverage * MARK_WEIGHTS["evidence"],
-        "efficiency": efficiency_rate * MARK_WEIGHTS["efficiency"],
-        "validity": validity_rate * MARK_WEIGHTS["validity"],
-    }
-    score = round(sum(components.values()), 3)
+    standard_score = score_metrics(overall, target_steps=target_steps)
     records = result.get("records", [])
     agent_error_count = 0
     if isinstance(records, list):
@@ -261,18 +241,9 @@ def make_mark_row(result: Mapping[str, Any], *, target_steps: float) -> dict[str
     return {
         "baseline": result.get("baseline", result.get("agent", "unknown")),
         "model": result.get("model", "unknown"),
-        "score": score,
-        "components": {key: round(value, 3) for key, value in components.items()},
-        "metrics": {
-            "success_rate": success_rate,
-            "mean_reward": mean_reward,
-            "mean_steps": mean_steps,
-            "invalid_action_rate": invalid_action_rate,
-            "evidence_coverage": evidence_coverage,
-            "wrong_remediation_rate": metric(overall, "wrong_remediation_rate"),
-            "distractor_failure_rate": metric(overall, "distractor_failure_rate"),
-            "premature_resolution_rate": metric(overall, "premature_resolution_rate"),
-        },
+        "score": standard_score.score,
+        "components": standard_score.components,
+        "metrics": standard_score.metrics,
         "agent_error_count": agent_error_count,
         "run_error": result.get("run_error"),
     }
@@ -282,13 +253,6 @@ def as_mapping(value: object) -> Mapping[str, object]:
     if isinstance(value, Mapping):
         return value
     return ZERO_OVERALL
-
-
-def metric(overall: Mapping[str, object], key: str) -> float:
-    value = overall.get(key, 0.0)
-    if isinstance(value, int | float):
-        return float(value)
-    return 0.0
 
 
 def group_marks_by_model(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:

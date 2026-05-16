@@ -1,0 +1,68 @@
+{
+  "task_id": "misleading_cache_miss_db_index_rootcause",
+  "difficulty": "hard",
+  "alert": "Cache miss traffic increased and product search latency is high.",
+  "root_cause": "database missing product search index causing slow cache refill",
+  "root_cause_keywords": ["database", "index", "cache refill"],
+  "relevant_evidence": [
+    "inspect_metrics:cache",
+    "inspect_logs:database",
+    "inspect_config:database:INDEX_PRODUCTS_SKU"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:cache": "Cache metrics show more misses, but cache latency itself is normal.",
+    "inspect_logs:database": "Database logs show slow product SKU lookups during cache refill.",
+    "inspect_config:database:INDEX_PRODUCTS_SKU": "The product SKU index is disabled."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "INDEX_PRODUCTS_SKU",
+    "exact_value": true,
+    "fix_keywords": ["database", "index"]
+  },
+  "service_patches": {
+    "cache": {
+      "logs": [
+        "WARN cache miss namespace=products key=sku:88421",
+        "INFO cache backend fetch latency_ms=920",
+        "INFO cache internal p95_latency_ms=5"
+      ],
+      "metrics": {
+        "hit_rate": 0.54,
+        "p95_latency_ms": 5,
+        "backend_fill_latency_ms": 920
+      }
+    },
+    "database": {
+      "logs": [
+        "WARN sequential scan table=products predicate=sku latency_ms=910",
+        "WARN slow query table=products lookup=sku rows_examined=1400000",
+        "INFO connection pool waiters=0"
+      ],
+      "metrics": {
+        "query_p95_latency_ms": 940,
+        "active_connections": 20
+      },
+      "config": {
+        "INDEX_PRODUCTS_SKU": false
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(cache)",
+    "inspect_logs(database)",
+    "inspect_config(database, INDEX_PRODUCTS_SKU)",
+    "update_config(database, INDEX_PRODUCTS_SKU, true)",
+    "resolve_incident(database missing product search index causing slow cache refill, enable database product sku index)"
+  ],
+  "distractors": [
+    "Cache misses are a symptom; cache internals are healthy and database refill queries are slow."
+  ],
+  "distractor_services": ["cache"],
+  "max_steps": 10,
+  "metadata": {
+    "source": "config"
+  }
+}
+

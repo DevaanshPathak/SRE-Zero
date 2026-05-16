@@ -1,0 +1,63 @@
+{
+  "task_id": "web_queue_publish_timeout_low",
+  "difficulty": "medium",
+  "alert": "Checkout completes slowly and sometimes fails while publishing background jobs.",
+  "root_cause": "web server queue publish timeout too low",
+  "root_cause_keywords": ["web", "queue", "publish", "timeout"],
+  "relevant_evidence": [
+    "inspect_logs:web_server",
+    "inspect_metrics:message_queue",
+    "inspect_config:web_server:QUEUE_PUBLISH_TIMEOUT_MS"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:web_server": "Web logs show publish timeout errors while the queue eventually acknowledges messages.",
+    "inspect_metrics:message_queue": "Queue metrics show normal publish error rate and moderate latency.",
+    "inspect_config:web_server:QUEUE_PUBLISH_TIMEOUT_MS": "QUEUE_PUBLISH_TIMEOUT_MS is below observed publish latency."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "web_server",
+    "key": "QUEUE_PUBLISH_TIMEOUT_MS",
+    "min_numeric_value": 3000,
+    "fix_keywords": ["web", "queue"]
+  },
+  "service_patches": {
+    "web_server": {
+      "logs": [
+        "ERROR request_id=6002 publish checkout_job failed error=timeout after_ms=500",
+        "WARN checkout job publish retried attempts=3",
+        "INFO database write completed latency_ms=33"
+      ],
+      "metrics": {
+        "checkout_error_rate": 0.08,
+        "p95_latency_ms": 690
+      },
+      "config": {
+        "QUEUE_PUBLISH_TIMEOUT_MS": 500
+      }
+    },
+    "message_queue": {
+      "metrics": {
+        "publish_error_rate": 0.0,
+        "publish_p95_latency_ms": 1400,
+        "queue_depth": 40
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(web_server)",
+    "inspect_metrics(message_queue)",
+    "inspect_config(web_server, QUEUE_PUBLISH_TIMEOUT_MS)",
+    "update_config(web_server, QUEUE_PUBLISH_TIMEOUT_MS, 3000)",
+    "resolve_incident(web server queue publish timeout too low, increase web queue publish timeout)"
+  ],
+  "distractors": [
+    "The queue is acknowledging publishes; the web timeout is too aggressive."
+  ],
+  "distractor_services": ["message_queue"],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

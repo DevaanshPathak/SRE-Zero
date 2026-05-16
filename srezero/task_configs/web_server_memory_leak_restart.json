@@ -1,0 +1,56 @@
+{
+  "task_id": "web_server_memory_leak_restart",
+  "difficulty": "easy",
+  "alert": "API latency is rising and web workers are being killed for memory usage.",
+  "root_cause": "web server memory leak caused worker crashes",
+  "root_cause_keywords": ["web", "memory", "leak"],
+  "relevant_evidence": [
+    "check_status:web_server",
+    "inspect_logs:web_server",
+    "inspect_metrics:web_server"
+  ],
+  "evidence_descriptions": {
+    "check_status:web_server": "Web server status is degraded after repeated worker exits.",
+    "inspect_logs:web_server": "Web logs show workers killed by out-of-memory conditions.",
+    "inspect_metrics:web_server": "Web metrics show memory utilization near exhaustion."
+  },
+  "correct_fix": {
+    "action_type": "restart_service",
+    "service": "web_server",
+    "fix_keywords": ["web", "memory"]
+  },
+  "service_patches": {
+    "web_server": {
+      "status": "degraded",
+      "logs": [
+        "ERROR worker=7 killed reason=oom memory_mb=1510",
+        "WARN worker restart loop detected count=4",
+        "INFO request_id=812 path=/api/products status=200 latency_ms=980"
+      ],
+      "metrics": {
+        "p95_latency_ms": 1180,
+        "memory_used_pct": 96,
+        "worker_restarts": 7
+      }
+    },
+    "database": {
+      "logs": ["INFO query completed table=products latency_ms=21"]
+    }
+  },
+  "expected_action_pattern": [
+    "check_status(web_server)",
+    "inspect_logs(web_server)",
+    "inspect_metrics(web_server)",
+    "restart_service(web_server)",
+    "resolve_incident(web server memory leak caused worker crashes, restart web server to clear memory leak)"
+  ],
+  "distractors": [
+    "Database queries remain healthy; the repeated failures are in web workers."
+  ],
+  "distractor_services": ["database"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

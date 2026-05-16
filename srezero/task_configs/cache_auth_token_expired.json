@@ -1,0 +1,62 @@
+{
+  "task_id": "cache_auth_token_expired",
+  "difficulty": "easy",
+  "alert": "Product pages are slow and cache requests are being denied.",
+  "root_cause": "cache authentication token expired",
+  "root_cause_keywords": ["cache", "authentication", "token"],
+  "relevant_evidence": [
+    "inspect_logs:cache",
+    "inspect_metrics:cache",
+    "inspect_config:cache:AUTH_TOKEN_VALID"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:cache": "Cache logs show authentication failures from the web tier.",
+    "inspect_metrics:cache": "Cache metrics show denied requests and a collapsed hit rate.",
+    "inspect_config:cache:AUTH_TOKEN_VALID": "AUTH_TOKEN_VALID is false."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "cache",
+    "key": "AUTH_TOKEN_VALID",
+    "exact_value": true,
+    "fix_keywords": ["cache", "token"]
+  },
+  "service_patches": {
+    "cache": {
+      "logs": [
+        "ERROR auth denied client=web_server reason=token_expired",
+        "WARN cache get rejected namespace=products",
+        "INFO eviction cycle completed evicted=9"
+      ],
+      "metrics": {
+        "hit_rate": 0.18,
+        "auth_denied_rate": 0.71,
+        "p95_latency_ms": 8
+      },
+      "config": {
+        "AUTH_TOKEN_VALID": false
+      }
+    },
+    "web_server": {
+      "metrics": {
+        "p95_latency_ms": 760
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(cache)",
+    "inspect_metrics(cache)",
+    "inspect_config(cache, AUTH_TOKEN_VALID)",
+    "update_config(cache, AUTH_TOKEN_VALID, true)",
+    "resolve_incident(cache authentication token expired, refresh cache token)"
+  ],
+  "distractors": [
+    "The web latency is caused by denied cache requests, not web worker saturation."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

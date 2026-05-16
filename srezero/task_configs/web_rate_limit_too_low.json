@@ -1,0 +1,63 @@
+{
+  "task_id": "web_rate_limit_too_low",
+  "difficulty": "medium",
+  "alert": "Users are receiving intermittent 429 responses during normal traffic.",
+  "root_cause": "web server rate limit configured too low",
+  "root_cause_keywords": ["web", "rate", "limit"],
+  "relevant_evidence": [
+    "inspect_logs:web_server",
+    "inspect_metrics:web_server",
+    "inspect_config:web_server:RATE_LIMIT_RPS"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:web_server": "Web logs show many 429 responses triggered by the local rate limiter.",
+    "inspect_metrics:web_server": "Web metrics show elevated rate-limit rejects while traffic is normal.",
+    "inspect_config:web_server:RATE_LIMIT_RPS": "RATE_LIMIT_RPS is far below current normal load."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "web_server",
+    "key": "RATE_LIMIT_RPS",
+    "min_numeric_value": 500,
+    "fix_keywords": ["web", "rate"]
+  },
+  "service_patches": {
+    "web_server": {
+      "logs": [
+        "WARN request_id=1103 status=429 reason=rate_limited route=/api/search",
+        "WARN local rate limiter threshold exceeded rps=238 limit=200",
+        "INFO upstream database latency_ms=24"
+      ],
+      "metrics": {
+        "request_rate": 260,
+        "rate_limited_requests": 980,
+        "error_rate": 0.09
+      },
+      "config": {
+        "RATE_LIMIT_RPS": 200
+      }
+    },
+    "load_balancer": {
+      "metrics": {
+        "connection_utilization_pct": 39,
+        "backend_5xx_rate": 0.01
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(web_server)",
+    "inspect_metrics(web_server)",
+    "inspect_config(web_server, RATE_LIMIT_RPS)",
+    "update_config(web_server, RATE_LIMIT_RPS, 600)",
+    "resolve_incident(web server rate limit configured too low, increase web rate limit)"
+  ],
+  "distractors": [
+    "The load balancer is not saturated; the rejects are emitted by the web tier."
+  ],
+  "distractor_services": ["load_balancer"],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

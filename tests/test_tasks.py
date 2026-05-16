@@ -1,16 +1,37 @@
 from srezero.env import SREEnv
-from srezero.task_registry import get_task, list_task_ids, task_config_ids, task_splits
+from srezero.task_registry import (
+    benchmark_splits,
+    get_task,
+    list_task_ids,
+    task_config_ids,
+    task_splits,
+)
 
 
-def test_phase1_task_count_and_splits() -> None:
+def test_task_count_and_difficulty_splits() -> None:
     task_ids = list_task_ids()
     splits = task_splits()
 
-    assert len(task_ids) == 25
-    assert 15 <= len(task_ids) <= 30
+    assert len(task_ids) == 40
     assert set(splits) == {"easy", "medium", "hard"}
     assert all(splits.values())
     assert set(task_ids) == set(task_config_ids())
+
+
+def test_benchmark_splits_cover_all_tasks_and_hold_out_unseen_incidents() -> None:
+    task_ids = set(list_task_ids())
+    splits = benchmark_splits()
+    primary_ids = splits["train"] + splits["dev"] + splits["test"]
+
+    assert len(task_ids) == 40
+    assert len(splits["train"]) == 24
+    assert len(splits["dev"]) == 8
+    assert len(splits["test"]) == 8
+    assert len(splits["unseen_incident"]) == 8
+    assert set(primary_ids) == task_ids
+    assert len(primary_ids) == len(set(primary_ids))
+    assert set(splits["unseen_incident"]).issubset(splits["test"])
+    assert list_task_ids(split="unseen_incident") == splits["unseen_incident"]
 
 
 def test_each_task_can_reset_and_expose_safe_observation() -> None:

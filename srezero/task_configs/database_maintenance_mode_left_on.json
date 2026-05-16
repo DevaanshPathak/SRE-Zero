@@ -1,0 +1,62 @@
+{
+  "task_id": "database_maintenance_mode_left_on",
+  "difficulty": "easy",
+  "alert": "Writes are being rejected after a maintenance window ended.",
+  "root_cause": "database maintenance mode was left enabled",
+  "root_cause_keywords": ["database", "maintenance", "mode"],
+  "relevant_evidence": [
+    "check_status:database",
+    "inspect_logs:database",
+    "inspect_config:database:MAINTENANCE_MODE"
+  ],
+  "evidence_descriptions": {
+    "check_status:database": "Database status reports read-only maintenance mode.",
+    "inspect_logs:database": "Database logs show write rejections due to maintenance mode.",
+    "inspect_config:database:MAINTENANCE_MODE": "MAINTENANCE_MODE is still enabled."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "MAINTENANCE_MODE",
+    "exact_value": false,
+    "fix_keywords": ["database", "maintenance"]
+  },
+  "service_patches": {
+    "database": {
+      "status": "degraded",
+      "logs": [
+        "WARN write rejected reason=maintenance_mode table=orders",
+        "INFO maintenance window completed marker_seen=true",
+        "WARN app_user attempted write while read_only=true"
+      ],
+      "metrics": {
+        "write_error_rate": 0.32,
+        "query_p95_latency_ms": 38
+      },
+      "config": {
+        "MAINTENANCE_MODE": true
+      }
+    },
+    "web_server": {
+      "logs": [
+        "ERROR request_id=902 path=/checkout status=500 error=database_write_rejected"
+      ]
+    }
+  },
+  "expected_action_pattern": [
+    "check_status(database)",
+    "inspect_logs(database)",
+    "inspect_config(database, MAINTENANCE_MODE)",
+    "update_config(database, MAINTENANCE_MODE, false)",
+    "resolve_incident(database maintenance mode was left enabled, disable database maintenance mode)"
+  ],
+  "distractors": [
+    "The web 500s are caused by database write rejection, not web process failure."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+

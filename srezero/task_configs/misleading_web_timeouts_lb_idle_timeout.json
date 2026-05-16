@@ -1,0 +1,67 @@
+{
+  "task_id": "misleading_web_timeouts_lb_idle_timeout",
+  "difficulty": "hard",
+  "alert": "Users report API timeouts, but web requests eventually complete.",
+  "root_cause": "load balancer idle timeout lower than web response time",
+  "root_cause_keywords": ["load balancer", "idle timeout", "web response"],
+  "relevant_evidence": [
+    "inspect_logs:web_server",
+    "inspect_logs:load_balancer",
+    "inspect_config:load_balancer:IDLE_TIMEOUT_MS"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:web_server": "Web logs show successful responses after longer processing times.",
+    "inspect_logs:load_balancer": "Load balancer logs show edge resets before web responses finish.",
+    "inspect_config:load_balancer:IDLE_TIMEOUT_MS": "IDLE_TIMEOUT_MS is lower than the web response duration."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "load_balancer",
+    "key": "IDLE_TIMEOUT_MS",
+    "min_numeric_value": 90000,
+    "fix_keywords": ["load balancer", "idle"]
+  },
+  "service_patches": {
+    "web_server": {
+      "logs": [
+        "INFO request_id=710 path=/api/export status=200 latency_ms=72000",
+        "INFO request_id=711 path=/api/export status=200 latency_ms=68000"
+      ],
+      "metrics": {
+        "p95_latency_ms": 72000,
+        "error_rate": 0.01
+      }
+    },
+    "load_balancer": {
+      "logs": [
+        "ERROR request_id=710 status=504 reason=edge_idle_timeout elapsed_ms=30000",
+        "WARN backend response arrived after client connection closed",
+        "INFO backend=web_server healthy=true"
+      ],
+      "metrics": {
+        "edge_timeout_rate": 0.22,
+        "backend_5xx_rate": 0.01,
+        "healthy_backends": 2
+      },
+      "config": {
+        "IDLE_TIMEOUT_MS": 30000
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(web_server)",
+    "inspect_logs(load_balancer)",
+    "inspect_config(load_balancer, IDLE_TIMEOUT_MS)",
+    "update_config(load_balancer, IDLE_TIMEOUT_MS, 90000)",
+    "resolve_incident(load balancer idle timeout lower than web response time, increase load balancer idle timeout)"
+  ],
+  "distractors": [
+    "Web responses eventually succeed; the edge timeout fires before completion."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 10,
+  "metadata": {
+    "source": "config"
+  }
+}
+

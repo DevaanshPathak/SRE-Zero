@@ -1,0 +1,62 @@
+{
+  "task_id": "cache_compression_disabled",
+  "difficulty": "medium",
+  "alert": "Cache memory usage rose sharply after a deployment and evictions increased.",
+  "root_cause": "cache compression disabled",
+  "root_cause_keywords": ["cache", "compression", "disabled"],
+  "relevant_evidence": [
+    "inspect_metrics:cache",
+    "inspect_logs:cache",
+    "inspect_config:cache:COMPRESSION_ENABLED"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:cache": "Cache metrics show high memory usage and elevated evictions.",
+    "inspect_logs:cache": "Cache logs show large uncompressed values being stored.",
+    "inspect_config:cache:COMPRESSION_ENABLED": "COMPRESSION_ENABLED is false."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "cache",
+    "key": "COMPRESSION_ENABLED",
+    "exact_value": true,
+    "fix_keywords": ["cache", "compression"]
+  },
+  "service_patches": {
+    "cache": {
+      "logs": [
+        "WARN stored value namespace=products size_kb=840 compression=false",
+        "WARN eviction pressure high evicted=3200",
+        "INFO cache reachable from web_server"
+      ],
+      "metrics": {
+        "memory_used_pct": 93,
+        "evictions_per_min": 1800,
+        "hit_rate": 0.63
+      },
+      "config": {
+        "COMPRESSION_ENABLED": false
+      }
+    },
+    "database": {
+      "metrics": {
+        "query_p95_latency_ms": 39
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(cache)",
+    "inspect_logs(cache)",
+    "inspect_config(cache, COMPRESSION_ENABLED)",
+    "update_config(cache, COMPRESSION_ENABLED, true)",
+    "resolve_incident(cache compression disabled, enable cache compression)"
+  ],
+  "distractors": [
+    "Database latency is normal; cache memory pressure comes from uncompressed values."
+  ],
+  "distractor_services": ["database"],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

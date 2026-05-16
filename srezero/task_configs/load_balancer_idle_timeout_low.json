@@ -1,0 +1,62 @@
+{
+  "task_id": "load_balancer_idle_timeout_low",
+  "difficulty": "medium",
+  "alert": "Long-running API requests are being disconnected at the edge.",
+  "root_cause": "load balancer idle timeout too low",
+  "root_cause_keywords": ["load balancer", "idle", "timeout"],
+  "relevant_evidence": [
+    "inspect_logs:load_balancer",
+    "inspect_metrics:load_balancer",
+    "inspect_config:load_balancer:IDLE_TIMEOUT_MS"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:load_balancer": "Load balancer logs show edge connection resets at the idle timeout.",
+    "inspect_metrics:load_balancer": "Load balancer metrics show elevated connection reset rate.",
+    "inspect_config:load_balancer:IDLE_TIMEOUT_MS": "IDLE_TIMEOUT_MS is set below expected request duration."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "load_balancer",
+    "key": "IDLE_TIMEOUT_MS",
+    "min_numeric_value": 60000,
+    "fix_keywords": ["load balancer", "idle"]
+  },
+  "service_patches": {
+    "load_balancer": {
+      "logs": [
+        "WARN connection reset reason=idle_timeout elapsed_ms=15000",
+        "WARN route=/api/reporting client_reset=true",
+        "INFO backend=web_server healthy=true"
+      ],
+      "metrics": {
+        "edge_reset_rate": 0.28,
+        "backend_5xx_rate": 0.01,
+        "healthy_backends": 2
+      },
+      "config": {
+        "IDLE_TIMEOUT_MS": 15000
+      }
+    },
+    "web_server": {
+      "logs": [
+        "INFO request_id=410 path=/api/reporting completed status=200 latency_ms=42000"
+      ]
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(load_balancer)",
+    "inspect_metrics(load_balancer)",
+    "inspect_config(load_balancer, IDLE_TIMEOUT_MS)",
+    "update_config(load_balancer, IDLE_TIMEOUT_MS, 60000)",
+    "resolve_incident(load balancer idle timeout too low, increase load balancer idle timeout)"
+  ],
+  "distractors": [
+    "Web requests complete successfully; the disconnect happens at the edge."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

@@ -1,0 +1,63 @@
+{
+  "task_id": "database_autovacuum_disabled",
+  "difficulty": "medium",
+  "alert": "Database latency is increasing over time and table bloat warnings appeared.",
+  "root_cause": "database autovacuum disabled",
+  "root_cause_keywords": ["database", "autovacuum", "disabled"],
+  "relevant_evidence": [
+    "inspect_logs:database",
+    "inspect_metrics:database",
+    "inspect_config:database:AUTOVACUUM_ENABLED"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:database": "Database logs show bloat warnings and skipped vacuum runs.",
+    "inspect_metrics:database": "Database metrics show elevated table bloat and query latency.",
+    "inspect_config:database:AUTOVACUUM_ENABLED": "AUTOVACUUM_ENABLED is false."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "AUTOVACUUM_ENABLED",
+    "exact_value": true,
+    "fix_keywords": ["database", "autovacuum"]
+  },
+  "service_patches": {
+    "database": {
+      "logs": [
+        "WARN autovacuum skipped table=orders reason=disabled",
+        "WARN table bloat estimate table=orders bloat_pct=48",
+        "INFO connection pool waiters=0 pool_size=50"
+      ],
+      "metrics": {
+        "query_p95_latency_ms": 540,
+        "table_bloat_pct": 48,
+        "active_connections": 19
+      },
+      "config": {
+        "AUTOVACUUM_ENABLED": false
+      }
+    },
+    "cache": {
+      "metrics": {
+        "hit_rate": 0.91,
+        "p95_latency_ms": 5
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(database)",
+    "inspect_metrics(database)",
+    "inspect_config(database, AUTOVACUUM_ENABLED)",
+    "update_config(database, AUTOVACUUM_ENABLED, true)",
+    "resolve_incident(database autovacuum disabled, enable database autovacuum)"
+  ],
+  "distractors": [
+    "Cache hit rate is healthy; database bloat is driving the slowdown."
+  ],
+  "distractor_services": ["cache"],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

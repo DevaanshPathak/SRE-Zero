@@ -1,0 +1,67 @@
+{
+  "task_id": "database_read_replica_disabled_misleading_cache",
+  "difficulty": "hard",
+  "alert": "Cache-backed pages are slow and database read load has increased.",
+  "root_cause": "database read replica disabled causing cache refill latency",
+  "root_cause_keywords": ["database", "read replica", "cache refill"],
+  "relevant_evidence": [
+    "inspect_metrics:cache",
+    "inspect_metrics:database",
+    "inspect_config:database:READ_REPLICA_ENABLED"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:cache": "Cache hit rate is moderate, but refill latency is high.",
+    "inspect_metrics:database": "Database read latency and primary read utilization are elevated.",
+    "inspect_config:database:READ_REPLICA_ENABLED": "READ_REPLICA_ENABLED is false."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "database",
+    "key": "READ_REPLICA_ENABLED",
+    "exact_value": true,
+    "fix_keywords": ["database", "replica"]
+  },
+  "service_patches": {
+    "cache": {
+      "metrics": {
+        "hit_rate": 0.70,
+        "backend_fill_latency_ms": 1150,
+        "p95_latency_ms": 6
+      },
+      "logs": [
+        "WARN refill namespace=products backend_latency_ms=1180",
+        "INFO cache internal latency_ms=6"
+      ]
+    },
+    "database": {
+      "metrics": {
+        "read_primary_utilization_pct": 96,
+        "query_p95_latency_ms": 1050,
+        "active_connections": 38
+      },
+      "logs": [
+        "WARN read replica routing disabled; serving reads from primary",
+        "WARN primary read queue depth=1200"
+      ],
+      "config": {
+        "READ_REPLICA_ENABLED": false
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(cache)",
+    "inspect_metrics(database)",
+    "inspect_config(database, READ_REPLICA_ENABLED)",
+    "update_config(database, READ_REPLICA_ENABLED, true)",
+    "resolve_incident(database read replica disabled causing cache refill latency, enable database read replica)"
+  ],
+  "distractors": [
+    "Cache latency itself is healthy; slow refills come from database primary read pressure."
+  ],
+  "distractor_services": ["cache"],
+  "max_steps": 10,
+  "metadata": {
+    "source": "config"
+  }
+}
+

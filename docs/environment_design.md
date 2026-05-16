@@ -10,7 +10,7 @@ SRE-Zero Mini is a deterministic, simulation-only environment for incident-respo
 
 Each service has simulated status, logs, metrics, configuration, and dependency metadata. Logs and metrics may include deterministic distractors or noisy-but-irrelevant values. Actions mutate only in-memory simulator state.
 
-Task definitions are deterministic JSON configs packaged under `srezero/task_configs/`. Difficulty splits are declared in `srezero/task_splits.json`.
+Task definitions are deterministic JSON configs packaged under `srezero/task_configs/`. Difficulty splits and train/dev/test benchmark splits are declared in `srezero/task_splits.json`.
 
 ## Episode Flow
 
@@ -68,3 +68,20 @@ observation, reward, terminated, truncated, info = env.step("check_status(cache)
 ```
 
 `terminated` is true for resolution, escalation, or terminal incorrect resolution. `truncated` is true when the step budget is exhausted.
+
+## Benchmark API
+
+The public benchmark API lives in `srezero.benchmark` and is re-exported from
+`srezero`:
+
+```python
+from srezero import benchmark_catalog, benchmark_spec, benchmark_task_ids, make_env
+
+spec = benchmark_spec()
+task_ids = benchmark_task_ids(split="test")
+catalog = benchmark_catalog(split="test")
+env = make_env(task_id=task_ids[0])
+```
+
+This API is the stable entry point for paper-level benchmark users. Lower-level
+environment classes remain available for development and debugging.

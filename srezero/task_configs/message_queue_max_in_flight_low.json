@@ -1,0 +1,64 @@
+{
+  "task_id": "message_queue_max_in_flight_low",
+  "difficulty": "medium",
+  "alert": "Queue throughput is capped and workers are idle despite a large backlog.",
+  "root_cause": "message queue max in-flight limit too low",
+  "root_cause_keywords": ["message queue", "in flight", "limit"],
+  "relevant_evidence": [
+    "inspect_metrics:message_queue",
+    "inspect_logs:message_queue",
+    "inspect_config:message_queue:MAX_IN_FLIGHT"
+  ],
+  "evidence_descriptions": {
+    "inspect_metrics:message_queue": "Queue metrics show high backlog but low in-flight message count.",
+    "inspect_logs:message_queue": "Queue logs show dispatch blocked by the in-flight cap.",
+    "inspect_config:message_queue:MAX_IN_FLIGHT": "MAX_IN_FLIGHT is too low for the worker fleet."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "message_queue",
+    "key": "MAX_IN_FLIGHT",
+    "min_numeric_value": 1000,
+    "fix_keywords": ["message queue", "in flight"]
+  },
+  "service_patches": {
+    "message_queue": {
+      "logs": [
+        "WARN dispatch blocked reason=max_in_flight current=200 limit=200",
+        "INFO consumers=16 idle_consumers=9",
+        "WARN queue=notifications backlog=9400"
+      ],
+      "metrics": {
+        "queue_depth": 9400,
+        "oldest_message_age_ms": 180000,
+        "in_flight_messages": 200,
+        "consumer_lag_ms": 76000
+      },
+      "config": {
+        "MAX_IN_FLIGHT": 200,
+        "CONSUMER_CONCURRENCY": 16
+      }
+    },
+    "database": {
+      "metrics": {
+        "query_p95_latency_ms": 43
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_metrics(message_queue)",
+    "inspect_logs(message_queue)",
+    "inspect_config(message_queue, MAX_IN_FLIGHT)",
+    "update_config(message_queue, MAX_IN_FLIGHT, 1200)",
+    "resolve_incident(message queue max in-flight limit too low, increase message queue in flight limit)"
+  ],
+  "distractors": [
+    "Consumers are present and database latency is normal; dispatch is capped by queue config."
+  ],
+  "distractor_services": ["database"],
+  "max_steps": 9,
+  "metadata": {
+    "source": "config"
+  }
+}
+

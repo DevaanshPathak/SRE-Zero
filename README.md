@@ -2,7 +2,7 @@
 
 SRE-Zero is an early-stage research benchmark for studying reliable tool-using LLM agents in simulated incident-response workflows.
 
-The v0.1 repository contains **SRE-Zero Mini**, a deterministic environment where agents diagnose incidents across simulated `web_server`, `database`, `cache`, `message_queue`, and `load_balancer` services. Agents inspect logs, metrics, status, and config, then apply minimal in-memory remediations under a step budget.
+The v0.6 repository contains **SRE-Zero Mini**, a deterministic environment where agents diagnose incidents across simulated `web_server`, `database`, `cache`, `message_queue`, and `load_balancer` services. Agents inspect logs, metrics, status, and config, then apply minimal in-memory remediations under a step budget.
 
 This is early research code. It is intentionally small, safe, and simulation-only. It does not control real infrastructure or execute arbitrary shell commands. External LLM APIs are optional and are only called when an LLM baseline is explicitly selected.
 
@@ -14,6 +14,7 @@ The initial benchmark emphasizes:
 
 - Deterministic incident tasks.
 - Formal easy/medium/hard task splits.
+- Train/dev/test and unseen-incident benchmark splits.
 - Structured tool actions.
 - Text and structured observations.
 - Partial-credit rewards.
@@ -68,6 +69,12 @@ Run a difficulty split:
 
 ```bash
 python eval/run_eval.py --agent scripted --difficulty hard --episodes 1
+```
+
+Run a benchmark split with standardized scoring:
+
+```bash
+python eval/run_benchmark.py --agent scripted --split test --episodes 1 --seed 0
 ```
 
 Configure optional OpenAI-compatible LLM baselines:
@@ -144,6 +151,12 @@ Create basic SVG plots from a combined results JSON:
 python eval/plot_results.py --input notes/runs/all_eval_summary.json --output-dir notes/plots/latest
 ```
 
+Create paper-ready Markdown result tables:
+
+```bash
+python eval/write_result_tables.py --input notes/runs/all_eval_summary.json --output-dir notes/tables/latest
+```
+
 Disable the log file or choose a custom path:
 
 ```bash
@@ -171,7 +184,7 @@ ruff check .
 
 ## Task Suite Summary
 
-SRE-Zero Mini v0.1 includes 25 deterministic incident tasks backed by JSON configs in `srezero/task_configs/`.
+SRE-Zero v0.6 includes 40 deterministic incident tasks backed by JSON configs in `srezero/task_configs/`.
 
 | Task | Difficulty | Root Cause |
 | --- | --- | --- |
@@ -193,19 +206,38 @@ SRE-Zero Mini v0.1 includes 25 deterministic incident tasks backed by JSON confi
 | `message_queue_crash` | easy | Message queue service crashed |
 | `load_balancer_health_check_misconfig` | easy | Load balancer health check path misconfigured |
 | `message_queue_backlog_consumers_low` | easy | Message queue consumer concurrency too low |
+| `web_server_memory_leak_restart` | easy | Web server memory leak caused worker crashes |
+| `database_maintenance_mode_left_on` | easy | Database maintenance mode left enabled |
+| `cache_auth_token_expired` | easy | Cache authentication token expired |
+| `load_balancer_tls_cert_expired` | easy | Load balancer TLS certificate expired |
 | `load_balancer_connection_limit_low` | medium | Load balancer maximum connections too low |
 | `message_queue_retry_limit_low` | medium | Message queue retry limit too low |
 | `load_balancer_sticky_session_hotspot` | medium | Sticky sessions causing backend hotspot |
 | `message_queue_visibility_timeout_low` | medium | Message queue visibility timeout too low |
+| `web_rate_limit_too_low` | medium | Web server rate limit too low |
+| `database_autovacuum_disabled` | medium | Database autovacuum disabled |
+| `cache_compression_disabled` | medium | Cache compression disabled |
+| `message_queue_max_in_flight_low` | medium | Message queue max in-flight limit too low |
+| `load_balancer_idle_timeout_low` | medium | Load balancer idle timeout too low |
+| `web_queue_publish_timeout_low` | medium | Web server queue publish timeout too low |
 | `misleading_queue_backlog_db_rootcause` | hard | Database latency causing queue backlog |
 | `misleading_lb_502_cache_rootcause` | hard | Cache crash causing load-balancer 502s |
 | `load_balancer_bad_backend_weight` | hard | Load balancer backend weight misconfigured |
+| `misleading_cache_miss_db_index_rootcause` | hard | Database missing index causing slow cache refills |
+| `misleading_lb_503_web_worker_rootcause` | hard | Web worker saturation causing load-balancer 503s |
+| `message_queue_poison_message_retry_storm` | hard | Poison messages causing queue retry storm |
+| `database_read_replica_disabled_misleading_cache` | hard | Disabled read replica causing cache refill latency |
+| `misleading_web_timeouts_lb_idle_timeout` | hard | Load-balancer idle timeout causing web timeout symptoms |
 
 Formal split files:
 
-- `easy`: 7 tasks
-- `medium`: 10 tasks
-- `hard`: 8 tasks
+- `easy`: 11 tasks
+- `medium`: 16 tasks
+- `hard`: 13 tasks
+- `train`: 24 tasks
+- `dev`: 8 tasks
+- `test`: 8 tasks
+- `unseen_incident`: 8 held-out test tasks
 
 The split manifest is `srezero/task_splits.json`.
 
@@ -231,6 +263,19 @@ obs, info = env.reset(seed=0)
 obs, reward, terminated, truncated, info = env.step("check_status(cache)")
 ```
 
+The final benchmark API exposes stable catalog, split, environment, and scoring helpers:
+
+```python
+from srezero import benchmark_spec, benchmark_task_ids, make_env
+
+spec = benchmark_spec()
+task_ids = benchmark_task_ids(split="test")
+env = make_env(task_id=task_ids[0])
+```
+
+See `docs/benchmark_api.md` for the public API, reproducible commands, and
+standardized scoring formula.
+
 ## Frontend
 
 The `frontend/` directory contains a Next.js console for using SRE-Zero interactively. It provides:
@@ -251,7 +296,7 @@ The root `start-frontend.sh` script starts the Next dev server. The root `start-
 ## Baseline Agents
 
 - `RandomAgent`: samples action templates with deterministic randomness. It intentionally sometimes emits invalid service names to test environment robustness.
-- `ScriptedExpertAgent`: uses a small task-specific policy table as an approximate upper bound. In v0.1 this policy is allowed to know task solutions, and this limitation is documented in the benchmark notes.
+- `ScriptedExpertAgent`: uses a small task-specific policy table as an approximate upper bound. In v0.6 this policy is allowed to know task solutions, and this limitation is documented in the benchmark notes.
 - `PromptingBaselineAgent`: calls an OpenAI-compatible chat completions endpoint with the current observation and asks for one action.
 - `ReActBaselineAgent`: keeps a compact Thought/Action history across an episode and calls an OpenAI-compatible chat completions endpoint.
 - `OpenSourceLLMBaselineAgent`: prompting profile intended for local or hosted open-source OpenAI-compatible servers.
@@ -278,15 +323,19 @@ examples are documented in `docs/baseline_agents.md`.
 - Add optional Docker-backed scenarios after the simulator contract stabilizes.
 - Add external LLM agent adapters without making them required.
 
-## Phase 1 Status
+## Benchmark Status
 
 - [x] Build SRE-Zero environment
-- [x] Create 15-30 incident-response tasks
+- [x] Create initial 15-30 incident-response tasks
+- [x] Add 15 additional incident-response tasks
+- [x] Add train/dev/test and unseen-incident splits
 - [x] Add easy/medium/hard splits
 - [x] Implement OpenEnv/Gym-style API
 - [x] Add deterministic task configs
 - [x] Add reward functions
 - [x] Add evaluation metrics
+- [x] Add standardized scoring
+- [x] Add final benchmark API
 - [x] Add basic result plotting
 
 ## Citation

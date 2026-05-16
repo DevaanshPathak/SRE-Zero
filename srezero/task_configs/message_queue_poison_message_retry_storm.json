@@ -1,0 +1,63 @@
+{
+  "task_id": "message_queue_poison_message_retry_storm",
+  "difficulty": "hard",
+  "alert": "A queue backlog is growing and the same failed jobs are retried repeatedly.",
+  "root_cause": "message queue retry limit too high for poison messages",
+  "root_cause_keywords": ["message queue", "retry", "poison"],
+  "relevant_evidence": [
+    "inspect_logs:message_queue",
+    "inspect_metrics:message_queue",
+    "inspect_config:message_queue:RETRY_LIMIT"
+  ],
+  "evidence_descriptions": {
+    "inspect_logs:message_queue": "Queue logs show poison messages being retried many times.",
+    "inspect_metrics:message_queue": "Queue metrics show elevated retry volume and oldest message age.",
+    "inspect_config:message_queue:RETRY_LIMIT": "RETRY_LIMIT is set too high, delaying dead-letter handling."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "message_queue",
+    "key": "RETRY_LIMIT",
+    "exact_value": 3,
+    "fix_keywords": ["message queue", "retry"]
+  },
+  "service_patches": {
+    "message_queue": {
+      "logs": [
+        "WARN message_id=poison-17 retry_count=38 handler=invoice_email",
+        "WARN retry storm detected queue=notifications duplicate_failures=4200",
+        "INFO database latency_ms=31"
+      ],
+      "metrics": {
+        "queue_depth": 12800,
+        "retry_rate": 0.62,
+        "oldest_message_age_ms": 540000,
+        "dead_letter_rate": 0.01
+      },
+      "config": {
+        "RETRY_LIMIT": 50
+      }
+    },
+    "database": {
+      "metrics": {
+        "query_p95_latency_ms": 35
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "inspect_logs(message_queue)",
+    "inspect_metrics(message_queue)",
+    "inspect_config(message_queue, RETRY_LIMIT)",
+    "update_config(message_queue, RETRY_LIMIT, 3)",
+    "resolve_incident(message queue retry limit too high for poison messages, lower message queue retry limit)"
+  ],
+  "distractors": [
+    "Database latency is normal; repeated poison-message retries are consuming queue capacity."
+  ],
+  "distractor_services": ["database"],
+  "max_steps": 10,
+  "metadata": {
+    "source": "config"
+  }
+}
+

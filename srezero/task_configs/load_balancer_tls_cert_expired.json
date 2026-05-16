@@ -1,0 +1,58 @@
+{
+  "task_id": "load_balancer_tls_cert_expired",
+  "difficulty": "easy",
+  "alert": "A subset of clients cannot connect to the site over HTTPS.",
+  "root_cause": "load balancer TLS certificate expired",
+  "root_cause_keywords": ["load balancer", "tls", "certificate"],
+  "relevant_evidence": [
+    "check_status:load_balancer",
+    "inspect_logs:load_balancer",
+    "inspect_config:load_balancer:TLS_CERT_VALID"
+  ],
+  "evidence_descriptions": {
+    "check_status:load_balancer": "Load balancer status reports degraded TLS listener health.",
+    "inspect_logs:load_balancer": "Load balancer logs show TLS handshake failures due to an expired certificate.",
+    "inspect_config:load_balancer:TLS_CERT_VALID": "TLS_CERT_VALID is false."
+  },
+  "correct_fix": {
+    "action_type": "update_config",
+    "service": "load_balancer",
+    "key": "TLS_CERT_VALID",
+    "exact_value": true,
+    "fix_keywords": ["tls", "certificate"]
+  },
+  "service_patches": {
+    "load_balancer": {
+      "status": "degraded",
+      "logs": [
+        "ERROR listener=https tls_handshake_failed reason=certificate_expired",
+        "WARN client_error_rate elevated tls_alert=certificate_expired",
+        "INFO backend=web_server healthy=true"
+      ],
+      "metrics": {
+        "tls_handshake_error_rate": 0.44,
+        "backend_5xx_rate": 0.01,
+        "healthy_backends": 2
+      },
+      "config": {
+        "TLS_CERT_VALID": false
+      }
+    }
+  },
+  "expected_action_pattern": [
+    "check_status(load_balancer)",
+    "inspect_logs(load_balancer)",
+    "inspect_config(load_balancer, TLS_CERT_VALID)",
+    "update_config(load_balancer, TLS_CERT_VALID, true)",
+    "resolve_incident(load balancer TLS certificate expired, rotate tls certificate)"
+  ],
+  "distractors": [
+    "Backends are healthy; client failures occur before requests reach web_server."
+  ],
+  "distractor_services": ["web_server"],
+  "max_steps": 8,
+  "metadata": {
+    "source": "config"
+  }
+}
+
