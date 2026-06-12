@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -137,12 +138,23 @@ class OpenAICompatibleChatClient:
         attempt_count = self.config.max_retries + 1
         errors: list[str] = []
         for attempt in range(1, attempt_count + 1):
+            _log_llm_status(
+                f"request start model={self.config.model} attempt={attempt}/{attempt_count}"
+            )
             try:
                 content = self._complete_once(endpoint, payload, headers)
                 _RATE_LIMITER.note_request_succeeded()
+                _log_llm_status(
+                    f"request success model={self.config.model} attempt={attempt}/{attempt_count}"
+                )
                 return content
             except RuntimeError as exc:
                 errors.append(str(exc))
+                _log_llm_status(
+                    "request failed "
+                    f"model={self.config.model} attempt={attempt}/{attempt_count} "
+                    f"error={_short_status(str(exc))}"
+                )
                 _RATE_LIMITER.note_request_failed(self.config)
                 if attempt >= attempt_count:
                     break
@@ -220,6 +232,9 @@ class _ProviderRateLimiter:
             wait_seconds = self._seconds_until_available(config)
             if wait_seconds <= 0:
                 return
+            _log_llm_status(
+                f"throttle sleep model={config.model} seconds={wait_seconds:.1f}"
+            )
             time.sleep(wait_seconds)
 
     def note_request_finished(self) -> None:
@@ -243,6 +258,9 @@ class _ProviderRateLimiter:
                 self._consecutive_failures = 0
                 pause_seconds = config.rejection_pause_seconds
         if pause_seconds > 0:
+            _log_llm_status(
+                f"provider cooldown model={config.model} seconds={pause_seconds:.1f}"
+            )
             time.sleep(pause_seconds)
 
     def _seconds_until_available(self, config: LLMConfig) -> float:
@@ -286,6 +304,17 @@ class _ProviderRateLimiter:
 
 
 _RATE_LIMITER = _ProviderRateLimiter()
+
+
+def _log_llm_status(message: str) -> None:
+    print(f"SREZERO_LLM {message}", file=sys.stderr, flush=True)
+
+
+def _short_status(message: str, *, limit: int = 240) -> str:
+    compact = " ".join(message.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: limit - 3]}..."
 
 
 def load_env_file(path: Path | None = None) -> dict[str, str]:

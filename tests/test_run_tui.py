@@ -14,19 +14,28 @@ from run_tui import (  # noqa: E402
     ManagedRunConfig,
     RunTarget,
     active_status_text,
+    append_targets_to_queue,
     apply_model_checklist_command,
     build_target_command,
     checkbox,
     checklist_page,
+    clear_queue,
     delete_managed_run_directory,
     delete_target_artifact_files,
+    errored_task_ids,
     filtered_models,
     filtered_targets,
+    load_queue,
     model_checklist_candidates,
+    next_queued_target,
     parse_checklist_indexes,
     parse_checklist_selection_command,
     powershell_command,
+    queue_status_text,
+    queue_targets,
+    rewrite_result_without_task_ids,
     safe_target_key,
+    save_queue,
     selected_models_in_order,
     tail_lines,
     update_run_targets,
@@ -186,6 +195,88 @@ def test_update_run_targets_persists_config(tmp_path) -> None:
 
     assert updated.config_path.exists()
     assert len(updated.config.targets) == 2
+
+
+def test_queue_persists_unique_known_targets_in_order(tmp_path) -> None:
+    targets = [RunTarget("random"), RunTarget("scripted")]
+    managed = sample_run(tmp_path, targets)
+
+    saved = save_queue(
+        managed,
+        [targets[1].key, "missing", targets[0].key, targets[1].key],
+    )
+
+    assert saved == [targets[1].key, targets[0].key]
+    assert load_queue(managed) == [targets[1].key, targets[0].key]
+    assert queue_targets(managed) == [targets[1], targets[0]]
+
+
+def test_append_targets_to_queue_does_not_duplicate(tmp_path) -> None:
+    targets = [RunTarget("random"), RunTarget("scripted")]
+    managed = sample_run(tmp_path, targets)
+    save_queue(managed, [targets[0].key])
+
+    added = append_targets_to_queue(managed, targets)
+
+    assert added == 1
+    assert load_queue(managed) == [targets[0].key, targets[1].key]
+
+
+def test_next_queued_target_skips_complete_targets(tmp_path) -> None:
+    targets = [RunTarget("random"), RunTarget("scripted")]
+    managed = sample_run(tmp_path, targets)
+    save_queue(managed, [target.key for target in targets])
+    managed.target_output_path(targets[0]).parent.mkdir(parents=True, exist_ok=True)
+    managed.target_output_path(targets[0]).write_text(
+        '{"complete": true, "records": []}',
+        encoding="utf-8",
+    )
+
+    assert next_queued_target(managed) == targets[1]
+    assert "2 queued" in queue_status_text(managed)
+
+
+def test_clear_queue_removes_queue_file(tmp_path) -> None:
+    managed = sample_run(tmp_path, [RunTarget("random")])
+    save_queue(managed, [managed.config.targets[0].key])
+
+    clear_queue(managed)
+
+    assert load_queue(managed) == []
+    assert not managed.queue_path.exists()
+
+
+def test_errored_task_ids_returns_unique_agent_error_tasks() -> None:
+    result = {
+        "records": [
+            {"task_id": "a", "agent_error": "RuntimeError"},
+            {"task_id": "a", "agent_error": "RuntimeError"},
+            {"task_id": "b"},
+            {"task_id": "c", "agent_error": "Timeout"},
+        ]
+    }
+
+    assert errored_task_ids(result) == ["a", "c"]
+
+
+def test_rewrite_result_without_task_ids_removes_matching_records(tmp_path) -> None:
+    path = tmp_path / "result.json"
+    path.write_text(
+        (
+            '{"complete": true, "paused": true, "run_error": "x", '
+            '"records": [{"task_id": "a"}, {"task_id": "b"}]}'
+        ),
+        encoding="utf-8",
+    )
+
+    removed = rewrite_result_without_task_ids(path, {"a"})
+    data = path.read_text(encoding="utf-8")
+
+    assert removed == 1
+    assert '"task_id": "a"' not in data
+    assert '"complete": false' in data
+    assert '"paused": false' in data
+    assert "run_error" not in data
 
 
 def test_write_queue_script_contains_selected_targets(tmp_path) -> None:

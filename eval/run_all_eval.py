@@ -52,7 +52,7 @@ from run_baseline_marks import (  # noqa: E402
     print_marks,
     run_one,
 )
-from run_eval import ProgressCallback  # noqa: E402
+from run_eval import ProgressCallback, resolve_task_ids  # noqa: E402
 
 from srezero.task_registry import Difficulty, list_task_ids  # noqa: E402
 
@@ -130,6 +130,7 @@ def main() -> None:
         return
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    selected_task_ids = selected_task_ids_from_args(args)
     log_path = None if args.no_log_file else args.log_file
     if log_path is not None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -156,7 +157,7 @@ def main() -> None:
                     append_log(log_path, pause_message)
                     break
 
-                run_total = task_count(args.difficulty) * item.episodes
+                run_total = task_count(args, selected_task_ids=selected_task_ids) * item.episodes
                 run_task = progress.add_task(
                     run_description(item, index, len(plan)),
                     total=run_total,
@@ -166,7 +167,8 @@ def main() -> None:
                 if existing_result is not None and result_is_complete(
                     existing_result,
                     episodes=item.episodes,
-                    difficulty=args.difficulty,
+                    args=args,
+                    selected_task_ids=selected_task_ids,
                 ):
                     result = existing_result
                     result["run_kind"] = result.get("run_kind", item.kind)
@@ -203,12 +205,14 @@ def main() -> None:
                     seed=args.seed,
                     base_url_override=args.base_url,
                     difficulty=args.difficulty,
+                    task_ids_override=selected_task_ids,
                     progress_callback=progress_callback(
                         progress,
                         run_task,
                         item,
                         index,
                         len(plan),
+                        log_path=log_path,
                     ),
                     existing_records=existing_records,
                     checkpoint_path=output_path,
@@ -263,6 +267,9 @@ def main() -> None:
             "pause_file": str(pause_file) if pause_file is not None else None,
             "seed": args.seed,
             "difficulty": args.difficulty,
+            "task_ids": args.task_ids,
+            "task_range": args.task_range,
+            "selected_task_ids": selected_task_ids,
             "target_steps": args.target_steps,
             "deterministic_episodes": args.deterministic_episodes,
             "llm_episodes": args.llm_episodes,
@@ -351,6 +358,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--base-url", default=None, help="Optional provider base URL override.")
     parser.add_argument("--difficulty", choices=["easy", "medium", "hard"], default=None)
+    parser.add_argument(
+        "--task-ids",
+        nargs="*",
+        default=None,
+        help="Run only these task ids after difficulty filtering.",
+    )
+    parser.add_argument(
+        "--task-range",
+        default=None,
+        help="Run a 1-based inclusive task range after filtering, for example 1-10.",
+    )
     parser.add_argument("--target-steps", type=float, default=8.0)
     parser.add_argument(
         "--log-file",
@@ -496,14 +514,26 @@ def result_is_complete(
     result: dict[str, Any],
     *,
     episodes: int,
-    difficulty: str | None,
+    args: argparse.Namespace,
+    selected_task_ids: list[str] | None,
 ) -> bool:
     if result.get("run_error") or result.get("paused"):
         return False
-    if result.get("complete") is True:
+    if selected_task_ids is None and result.get("complete") is True:
         return True
     records = records_from_result(result)
-    return len(records) >= task_count(difficulty) * episodes
+    expected_keys = expected_episode_keys(
+        seed=args.seed,
+        episodes=episodes,
+        difficulty=args.difficulty,
+        task_ids_override=selected_task_ids,
+    )
+    completed_keys = {
+        (record.get("task_id"), record.get("seed"))
+        for record in records
+        if isinstance(record.get("task_id"), str) and isinstance(record.get("seed"), int)
+    }
+    return expected_keys.issubset(completed_keys)
 
 
 def records_from_result(result: dict[str, Any] | None) -> list[dict[str, object]]:
@@ -657,6 +687,8 @@ def progress_callback(
     item: PlanItem,
     run_index: int,
     total_runs: int,
+    *,
+    log_path: Path | None,
 ) -> ProgressCallback:
     def update(
         task_id: str,
@@ -677,12 +709,53 @@ def progress_callback(
                 f"| {task_id} {task_index}/{total_tasks} ep {episode_index}/{total_episodes}"
             ),
         )
+        append_log(
+            log_path,
+            (
+                f"TASK {phase} run={run_index}/{total_runs} "
+                f"baseline={item.baseline} model={item.model_label} "
+                f"task={task_id} task_index={task_index}/{total_tasks} "
+                f"episode={episode_index}/{total_episodes} completed={max(0, completed)}"
+            ),
+        )
 
     return update
 
 
-def task_count(difficulty: str | None) -> int:
-    return len(list_task_ids(difficulty=cast(Difficulty | None, difficulty)))
+def selected_task_ids_from_args(args: argparse.Namespace) -> list[str] | None:
+    if not args.task_ids and not args.task_range:
+        return None
+    return resolve_task_ids(
+        difficulty=cast(Difficulty | None, args.difficulty),
+        split=None,
+        task_ids=args.task_ids,
+        task_range=args.task_range,
+    )
+
+
+def task_count(
+    args: argparse.Namespace,
+    *,
+    selected_task_ids: list[str] | None,
+) -> int:
+    if selected_task_ids is not None:
+        return len(selected_task_ids)
+    return len(list_task_ids(difficulty=cast(Difficulty | None, args.difficulty)))
+
+
+def expected_episode_keys(
+    *,
+    seed: int,
+    episodes: int,
+    difficulty: str | None,
+    task_ids_override: list[str] | None,
+) -> set[tuple[str, int]]:
+    task_ids = task_ids_override or list_task_ids(difficulty=cast(Difficulty | None, difficulty))
+    return {
+        (task_id, seed + task_index * 10_000 + episode_index)
+        for task_index, task_id in enumerate(task_ids)
+        for episode_index in range(episodes)
+    }
 
 
 def run_description(item: PlanItem, run_index: int, total_runs: int) -> str:

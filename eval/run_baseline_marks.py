@@ -25,7 +25,7 @@ for import_path in (ROOT, EVAL_DIR):
     if str(import_path) not in sys.path:
         sys.path.insert(0, str(import_path))
 
-from run_eval import ProgressCallback, evaluate  # noqa: E402
+from run_eval import ProgressCallback, evaluate, resolve_task_ids  # noqa: E402
 
 from baselines import AGENT_CHOICES  # noqa: E402
 from srezero.llm_config import load_env_file  # noqa: E402
@@ -59,6 +59,16 @@ def main() -> None:
                 base_url_override=args.base_url,
                 difficulty=args.difficulty,
                 split=args.split,
+                task_ids_override=(
+                    resolve_task_ids(
+                        difficulty=args.difficulty,
+                        split=args.split,
+                        task_ids=args.task_ids,
+                        task_range=args.task_range,
+                    )
+                    if args.task_ids or args.task_range
+                    else None
+                ),
             )
             runs.append(result)
             mark_rows.append(make_mark_row(result, target_steps=args.target_steps))
@@ -137,6 +147,17 @@ def parse_args() -> argparse.Namespace:
         help="Optional benchmark split. Can be combined with --difficulty.",
     )
     parser.add_argument(
+        "--task-ids",
+        nargs="*",
+        default=None,
+        help="Run only these task ids after difficulty/split filtering.",
+    )
+    parser.add_argument(
+        "--task-range",
+        default=None,
+        help="Run a 1-based inclusive task range after filtering, for example 1-10.",
+    )
+    parser.add_argument(
         "--target-steps",
         type=float,
         default=8.0,
@@ -196,6 +217,7 @@ def run_one(
     base_url_override: str | None,
     difficulty: str | None,
     split: str | None = None,
+    task_ids_override: list[str] | None = None,
     progress_callback: ProgressCallback | None = None,
     existing_records: list[dict[str, object]] | None = None,
     checkpoint_path: Path | None = None,
@@ -211,6 +233,7 @@ def run_one(
             base_url_override=base_url_override,
             difficulty=difficulty,  # type: ignore[arg-type]
             split=split,  # type: ignore[arg-type]
+            task_ids_override=task_ids_override,
             progress_callback=progress_callback,
             existing_records=existing_records,
             checkpoint_path=checkpoint_path,
@@ -226,6 +249,7 @@ def run_one(
             "base_url_override": base_url_override,
             "difficulty": difficulty,
             "split": split,
+            "filtered_task_ids": task_ids_override,
             "overall": ZERO_OVERALL,
             "by_task": {},
             "records": [],

@@ -41,10 +41,12 @@ from run_all_eval import (  # noqa: E402
     pairwise_deltas_by_baseline,
     safe_slug,
 )
+from run_eval import resolve_task_ids  # noqa: E402
 
 from srezero.task_registry import Difficulty, list_task_ids  # noqa: E402
 
 console = Console()
+STALE_PROCESS_SECONDS = 300.0
 
 LLM_BASELINES = {"prompting", "react", "open_source", "frontier"}
 DETERMINISTIC_BASELINES = {"random", "scripted"}
@@ -223,6 +225,10 @@ class ManagedRun:
     @property
     def pause_file(self) -> Path:
         return self.run_dir / "pause.flag"
+
+    @property
+    def queue_path(self) -> Path:
+        return self.run_dir / "queue.json"
 
     def target_output_path(self, target: RunTarget) -> Path:
         return self.output_dir / target.output_name(self.config)
@@ -916,86 +922,97 @@ def open_run(managed: ManagedRun) -> None:
         show_dashboard(managed)
         console.print(
             Panel(
-                "1. Play next pending/partial target\n"
-                "2. Run one selected target\n"
-                "3. Target checklist / export queue script\n"
-                "4. Add targets/models\n"
-                "5. Remove targets from run\n"
-                "6. Pause after current task/episode\n"
-                "7. Pause and stop active process now\n"
-                "8. Clear pause flag\n"
-                "9. Watch live status/logs\n"
-                "10. Show target details\n"
-                "11. Show log tail\n"
-                "12. Rebuild combined summary\n"
-                "13. Write/print command for selected target\n"
-                "14. Delete selected target artifacts\n"
-                "15. Show run folder\n"
-                "16. Delete this run\n"
+                "1. Play queued targets\n"
+                "2. Queue manager\n"
+                "3. Play next pending/partial target\n"
+                "4. Run one selected target\n"
+                "5. Rerun one selected target from scratch\n"
+                "6. Run selected target over task range\n"
+                "7. Rerun errored tasks for one target\n"
+                "8. Add targets/models\n"
+                "9. Remove targets from run\n"
+                "10. Pause after current task/episode\n"
+                "11. Pause and stop active process now\n"
+                "12. Clear pause flag\n"
+                "13. Watch live status/logs\n"
+                "14. Show target details\n"
+                "15. Show log tail\n"
+                "16. Rebuild combined summary\n"
+                "17. Write/print command for selected target\n"
+                "18. Delete selected target artifacts\n"
+                "19. Show run folder\n"
+                "20. Delete this run\n"
                 "b. Back",
                 title="Run Menu",
             )
         )
         choice = Prompt.ask("Choose", default="1").strip().lower()
         if choice == "1":
+            play_queue(managed)
+        elif choice == "2":
+            manage_queue(managed)
+        elif choice == "3":
             target = next_runnable_target(managed)
             if target is None:
                 console.print("[green]No pending or partial targets.[/green]")
                 continue
             launch_target(managed, target)
-        elif choice == "2":
+        elif choice == "4":
             targets = select_targets_checklist(managed, title="Run Target")
             if len(targets) == 1:
                 launch_target(managed, targets[0])
             elif len(targets) > 1:
+                added = append_targets_to_queue(managed, targets)
                 queue_path = write_queue_script(managed, targets)
                 console.print(
                     "[yellow]Only one background target can run at once.[/yellow] "
-                    f"Wrote queue script: {queue_path}"
+                    f"Added {added} target(s) to the managed queue and wrote script: "
+                    f"{queue_path}"
                 )
                 if Confirm.ask("Launch the first selected target now?", default=True):
                     launch_target(managed, targets[0])
-        elif choice == "3":
-            targets = select_targets_checklist(managed, title="Queue / Export Targets")
-            if targets:
-                queue_path = write_queue_script(managed, targets)
-                console.print(f"[green]Wrote queue script[/green] {queue_path}")
-        elif choice == "4":
-            managed = add_targets_to_run(managed)
         elif choice == "5":
-            managed = remove_targets_from_run(managed)
+            rerun_one_target(managed)
         elif choice == "6":
+            run_target_task_range(managed)
+        elif choice == "7":
+            rerun_errored_tasks(managed)
+        elif choice == "8":
+            managed = add_targets_to_run(managed)
+        elif choice == "9":
+            managed = remove_targets_from_run(managed)
+        elif choice == "10":
             pause_run(managed)
             watch_run_live(managed, target=active_target(managed), exit_when_inactive=True)
-        elif choice == "7":
+        elif choice == "11":
             target = active_target(managed)
             pause_run(managed)
             stop_active_process(managed, confirm=True, force=True)
             watch_run_live(managed, target=target, exit_when_inactive=True)
-        elif choice == "8":
+        elif choice == "12":
             clear_pause(managed)
-        elif choice == "9":
+        elif choice == "13":
             watch_run_live(managed, target=active_target(managed), exit_when_inactive=False)
-        elif choice == "10":
+        elif choice == "14":
             target = select_target(managed)
             if target is not None:
                 show_target_details(managed, target)
-        elif choice == "11":
+        elif choice == "15":
             target = select_target(managed)
             if target is not None:
                 show_log_tail(managed, target)
-        elif choice == "12":
+        elif choice == "16":
             rebuild_summary(managed)
-        elif choice == "13":
+        elif choice == "17":
             target = select_target(managed)
             if target is not None:
                 write_target_command(managed, target)
                 console.print(read_text(managed.target_command_path(target)))
-        elif choice == "14":
+        elif choice == "18":
             delete_selected_target_artifacts(managed)
-        elif choice == "15":
+        elif choice == "19":
             console.print(str(managed.run_dir))
-        elif choice == "16":
+        elif choice == "20":
             if delete_run(managed):
                 return
         elif choice in {"b", "back"}:
@@ -1051,17 +1068,21 @@ def show_dashboard(managed: ManagedRun) -> None:
     state = load_state(managed)
     pause_status = "present" if managed.pause_file.exists() else "clear"
     active = active_status_text(state, pause_requested=managed.pause_file.exists())
+    heartbeat = heartbeat_status_text(managed)
     console.print(
         Panel(
             f"folder: {managed.run_dir}\n"
             f"difficulty: {managed.config.difficulty or 'all'}\n"
+            f"queue: {queue_status_text(managed)}\n"
             f"pause file: {pause_status}\n"
-            f"active: {active}",
+            f"active: {active}\n"
+            f"heartbeat: {heartbeat}",
             title="State",
         )
     )
     table = Table(title="Targets")
     table.add_column("#", justify="right")
+    table.add_column("Q", justify="right")
     table.add_column("Status")
     table.add_column("Baseline")
     table.add_column("Model")
@@ -1070,6 +1091,7 @@ def show_dashboard(managed: ManagedRun) -> None:
     table.add_column("Success", justify="right")
     table.add_column("Evidence", justify="right")
     table.add_column("Errors", justify="right")
+    queue_positions = queued_position_map(managed)
     for index, target in enumerate(managed.config.targets, start=1):
         result = load_result(managed.target_output_path(target))
         status = target_status(managed, target)
@@ -1083,6 +1105,7 @@ def show_dashboard(managed: ManagedRun) -> None:
         errors = "-" if row is None else str(row["agent_error_count"] or 0)
         table.add_row(
             str(index),
+            queue_positions.get(target.key, "-"),
             status_label(status),
             target.baseline,
             target.label,
@@ -1112,12 +1135,14 @@ def select_targets_checklist(
     *,
     title: str,
     preselected: set[str] | None = None,
+    candidates: list[RunTarget] | None = None,
 ) -> list[RunTarget]:
+    target_pool = candidates if candidates is not None else managed.config.targets
     selected = set(preselected or set())
     filter_text = ""
     page = 0
     while True:
-        visible = filtered_targets(managed.config.targets, filter_text)
+        visible = filtered_targets(target_pool, filter_text)
         page_count = max(1, (len(visible) + 14) // 15)
         page = min(page, page_count - 1)
         visible_page = visible[page * 15 : page * 15 + 15]
@@ -1136,7 +1161,7 @@ def select_targets_checklist(
         ).strip()
         lowered = command.lower()
         if lowered in {"done", "d"}:
-            return [target for target in managed.config.targets if target.key in selected]
+            return [target for target in target_pool if target.key in selected]
         if lowered in {"cancel", "q"}:
             return []
         if lowered in {"next", "n"}:
@@ -1229,6 +1254,262 @@ def render_target_checklist(
     console.print(table)
 
 
+def manage_queue(managed: ManagedRun) -> None:
+    while True:
+        show_queue(managed)
+        console.print(
+            Panel(
+                "1. Add selected targets to queue\n"
+                "2. Replace queue from checklist\n"
+                "3. Remove targets from queue\n"
+                "4. Move queued target\n"
+                "5. Clear queue\n"
+                "6. Export queue script\n"
+                "7. Play full queue\n"
+                "8. Play next queued target only\n"
+                "9. Play N queued targets\n"
+                "b. Back",
+                title="Queue Menu",
+            )
+        )
+        choice = Prompt.ask("Choose", default="1").strip().lower()
+        if choice == "1":
+            selected = select_targets_checklist(managed, title="Add Targets To Queue")
+            if selected:
+                added = append_targets_to_queue(managed, selected)
+                console.print(f"[green]Added {added} target(s) to queue.[/green]")
+        elif choice == "2":
+            selected = select_targets_checklist(
+                managed,
+                title="Replace Queue",
+                preselected=set(load_queue(managed)),
+            )
+            save_queue(managed, [target.key for target in selected])
+            console.print(f"[green]Queue now has {len(selected)} target(s).[/green]")
+        elif choice == "3":
+            queued = queue_targets(managed)
+            selected = select_targets_checklist(
+                managed,
+                title="Remove From Queue",
+                candidates=queued,
+            )
+            if selected:
+                removed = remove_targets_from_queue(managed, selected)
+                console.print(f"[yellow]Removed {removed} target(s) from queue.[/yellow]")
+        elif choice == "4":
+            move_queued_target(managed)
+        elif choice == "5":
+            if Confirm.ask("Clear the managed queue?", default=False):
+                clear_queue(managed)
+                console.print("[yellow]Queue cleared.[/yellow]")
+        elif choice == "6":
+            queued = queue_targets(managed)
+            if not queued:
+                console.print("[yellow]Queue is empty.[/yellow]")
+                continue
+            queue_path = write_queue_script(managed, queued)
+            console.print(f"[green]Wrote queue script[/green] {queue_path}")
+        elif choice == "7":
+            play_queue(managed)
+        elif choice == "8":
+            play_queue(managed, max_targets=1)
+        elif choice == "9":
+            max_targets = IntPrompt.ask("Queued targets to play", default=1)
+            if max_targets > 0:
+                play_queue(managed, max_targets=max_targets)
+        elif choice in {"b", "back", "q"}:
+            return
+
+
+def show_queue(managed: ManagedRun) -> None:
+    queued = queue_targets(managed)
+    table = Table(title=f"Managed Queue: {queue_status_text(managed)}")
+    table.add_column("Q", justify="right")
+    table.add_column("Status")
+    table.add_column("Baseline")
+    table.add_column("Model")
+    table.add_column("Done", justify="right")
+    if not queued:
+        table.add_row("-", "-", "-", "[dim]Queue is empty.[/dim]", "-")
+    for index, target in enumerate(queued, start=1):
+        result = load_result(managed.target_output_path(target))
+        table.add_row(
+            str(index),
+            status_label(target_status(managed, target)),
+            target.baseline,
+            target.label,
+            f"{records_count(result)}/{expected_records(managed, target)}",
+        )
+    console.print(table)
+
+
+def play_queue(managed: ManagedRun, *, max_targets: int | None = None) -> None:
+    if state_pid_is_running(load_state(managed)):
+        console.print("[yellow]A managed target is already running.[/yellow]")
+        return
+    prune_completed_queue(managed)
+    if not queue_targets(managed):
+        console.print("[yellow]Queue is empty. Add targets from Queue manager first.[/yellow]")
+        return
+    if managed.pause_file.exists():
+        if Confirm.ask("Pause flag exists. Remove it before playing queue?", default=True):
+            clear_pause(managed)
+        else:
+            return
+
+    launched = 0
+    while max_targets is None or launched < max_targets:
+        prune_completed_queue(managed)
+        target = next_queued_target(managed)
+        if target is None:
+            console.print("[green]No queued runnable targets remain.[/green]")
+            return
+
+        launch_target(managed, target, watch=False)
+        launched += 1
+        watch_run_live(managed, target=target, exit_when_inactive=True)
+        refresh_state_if_needed(managed)
+
+        if active_target(managed) is not None:
+            console.print("[yellow]Queue paused because a target is still running.[/yellow]")
+            return
+
+        status = target_status(managed, target)
+        if status == "complete":
+            remove_targets_from_queue(managed, [target])
+            console.print(
+                f"[green]Completed and dequeued[/green] {target.baseline} | {target.label}"
+            )
+            if managed.pause_file.exists():
+                console.print("[yellow]Pause flag is set; queue playback stopped.[/yellow]")
+                return
+            continue
+        if status == "error":
+            console.print(
+                f"[red]Queued target ended with an error:[/red] "
+                f"{target.baseline} | {target.label}"
+            )
+            return
+        console.print(
+            f"[yellow]Queue stopped with target status {status}:[/yellow] "
+            f"{target.baseline} | {target.label}"
+        )
+        return
+
+
+def load_queue(managed: ManagedRun) -> list[str]:
+    if not managed.queue_path.exists():
+        return []
+    try:
+        data = json.loads(managed.queue_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    raw_keys: object = data.get("target_keys", []) if isinstance(data, dict) else data
+    if not isinstance(raw_keys, list):
+        return []
+    keys = [key for key in raw_keys if isinstance(key, str)]
+    return normalize_queue_keys(managed, keys)
+
+
+def save_queue(managed: ManagedRun, target_keys: Iterable[str]) -> list[str]:
+    managed.run_dir.mkdir(parents=True, exist_ok=True)
+    keys = normalize_queue_keys(managed, target_keys)
+    payload = {
+        "schema_version": 1,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "target_keys": keys,
+    }
+    managed.queue_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return keys
+
+
+def clear_queue(managed: ManagedRun) -> None:
+    if managed.queue_path.exists():
+        managed.queue_path.unlink()
+
+
+def normalize_queue_keys(managed: ManagedRun, target_keys: Iterable[str]) -> list[str]:
+    known_keys = {target.key for target in managed.config.targets}
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for key in target_keys:
+        if key in known_keys and key not in seen:
+            normalized.append(key)
+            seen.add(key)
+    return normalized
+
+
+def queue_targets(managed: ManagedRun) -> list[RunTarget]:
+    by_key = {target.key: target for target in managed.config.targets}
+    return [by_key[key] for key in load_queue(managed) if key in by_key]
+
+
+def queued_position_map(managed: ManagedRun) -> dict[str, str]:
+    return {target.key: str(index) for index, target in enumerate(queue_targets(managed), start=1)}
+
+
+def queue_status_text(managed: ManagedRun) -> str:
+    queued = queue_targets(managed)
+    if not queued:
+        return "empty"
+    complete = sum(1 for target in queued if target_status(managed, target) == "complete")
+    runnable = len(queued) - complete
+    next_target = next_queued_target(managed)
+    next_text = "none" if next_target is None else f"{next_target.baseline} | {next_target.label}"
+    return f"{len(queued)} queued, {runnable} remaining, next: {next_text}"
+
+
+def next_queued_target(managed: ManagedRun) -> RunTarget | None:
+    for target in queue_targets(managed):
+        if target_status(managed, target) != "complete":
+            return target
+    return None
+
+
+def prune_completed_queue(managed: ManagedRun) -> int:
+    complete = [
+        target
+        for target in queue_targets(managed)
+        if target_status(managed, target) == "complete"
+    ]
+    if not complete:
+        return 0
+    return remove_targets_from_queue(managed, complete)
+
+
+def append_targets_to_queue(managed: ManagedRun, targets: Iterable[RunTarget]) -> int:
+    existing = load_queue(managed)
+    before = set(existing)
+    saved = save_queue(managed, [*existing, *(target.key for target in targets)])
+    return sum(1 for key in saved if key not in before)
+
+
+def remove_targets_from_queue(managed: ManagedRun, targets: Iterable[RunTarget]) -> int:
+    remove_keys = {target.key for target in targets}
+    existing = load_queue(managed)
+    kept = [key for key in existing if key not in remove_keys]
+    save_queue(managed, kept)
+    return len(existing) - len(kept)
+
+
+def move_queued_target(managed: ManagedRun) -> None:
+    queued = queue_targets(managed)
+    if len(queued) < 2:
+        console.print("[yellow]Queue needs at least two targets to reorder.[/yellow]")
+        return
+    source = IntPrompt.ask("Move queue position", default=1)
+    if source < 1 or source > len(queued):
+        console.print("[red]Invalid queue position.[/red]")
+        return
+    destination = IntPrompt.ask("New queue position", default=1)
+    destination = max(1, min(destination, len(queued)))
+    keys = [target.key for target in queued]
+    key = keys.pop(source - 1)
+    keys.insert(destination - 1, key)
+    save_queue(managed, keys)
+    console.print(f"[green]Moved queued target {source} -> {destination}.[/green]")
+
+
 def add_targets_to_run(managed: ManagedRun) -> ManagedRun:
     baselines = choose_baselines("open_source")
     new_targets = choose_targets(baselines)
@@ -1261,6 +1542,8 @@ def remove_targets_from_run(managed: ManagedRun) -> ManagedRun:
     remove_keys = {target.key for target in selected}
     kept = [target for target in managed.config.targets if target.key not in remove_keys]
     updated = update_run_targets(managed, kept)
+    if load_queue(managed):
+        save_queue(updated, load_queue(managed))
     console.print(
         "[yellow]Removed target definitions. Existing output files were left in place.[/yellow]"
     )
@@ -1284,6 +1567,132 @@ def delete_selected_target_artifacts(managed: ManagedRun) -> None:
         return
     deleted = delete_target_artifact_files(managed, selected)
     console.print(f"[yellow]Deleted {deleted} artifact file(s).[/yellow]")
+
+
+def rerun_one_target(managed: ManagedRun) -> None:
+    target = select_target(managed)
+    if target is None:
+        return
+    state = load_state(managed)
+    if state_pid_is_running(state):
+        active = active_target(managed)
+        if active is not None and active.key == target.key:
+            console.print(
+                "[red]That target is already running. Use pause+stop now before rerun.[/red]"
+            )
+        else:
+            console.print("[yellow]A managed target is already running.[/yellow]")
+        return
+    result = load_result(managed.target_output_path(target))
+    records = records_count(result)
+    console.print(
+        Panel(
+            f"target: {target.baseline} | {target.label}\n"
+            f"status: {target_status(managed, target)}\n"
+            f"records: {records}/{expected_records(managed, target)}\n"
+            "Rerun deletes this target's output, summary, and logs, then starts fresh.",
+            title="Rerun Target",
+        )
+    )
+    if not Confirm.ask("Rerun this target from scratch?", default=False):
+        return
+    deleted = delete_target_artifact_files(managed, [target])
+    console.print(f"[yellow]Deleted {deleted} existing artifact file(s).[/yellow]")
+    launch_target(managed, target)
+
+
+def run_target_task_range(managed: ManagedRun) -> None:
+    target = select_target(managed)
+    if target is None:
+        return
+    if state_pid_is_running(load_state(managed)):
+        console.print("[yellow]A managed target is already running.[/yellow]")
+        return
+    all_tasks = list_task_ids(difficulty=cast(Difficulty | None, managed.config.difficulty))
+    console.print(f"Task range is 1-{len(all_tasks)} for this run's filters.")
+    raw_range = Prompt.ask("Task range, for example 1-10 or 17", default="1").strip()
+    try:
+        task_ids = resolve_task_ids(
+            difficulty=cast(Difficulty | None, managed.config.difficulty),
+            split=None,
+            task_ids=None,
+            task_range=raw_range,
+        )
+    except (TypeError, ValueError) as exc:
+        console.print(f"[red]Invalid task range:[/red] {exc}")
+        return
+    console.print(Panel(describe_task_selection(task_ids), title="Task Range"))
+    if Confirm.ask("Delete existing records for this task range before launch?", default=False):
+        removed = rewrite_result_without_task_ids(managed.target_output_path(target), set(task_ids))
+        console.print(f"[yellow]Removed {removed} existing record(s) for this range.[/yellow]")
+    launch_target(managed, target, task_ids=task_ids)
+
+
+def rerun_errored_tasks(managed: ManagedRun) -> None:
+    target = select_target(managed)
+    if target is None:
+        return
+    if state_pid_is_running(load_state(managed)):
+        console.print("[yellow]A managed target is already running.[/yellow]")
+        return
+    result = load_result(managed.target_output_path(target))
+    if result is None:
+        console.print("[yellow]No result file exists for that target yet.[/yellow]")
+        return
+    task_ids = errored_task_ids(result)
+    if not task_ids:
+        console.print("[green]No task-level agent errors found for that target.[/green]")
+        return
+    console.print(Panel(describe_task_selection(task_ids), title="Errored Tasks"))
+    if not Confirm.ask(f"Rerun {len(task_ids)} errored task(s)?", default=True):
+        return
+    removed = rewrite_result_without_task_ids(managed.target_output_path(target), set(task_ids))
+    console.print(f"[yellow]Removed {removed} errored record(s) before rerun.[/yellow]")
+    launch_target(managed, target, task_ids=task_ids)
+
+
+def errored_task_ids(result: dict[str, Any]) -> list[str]:
+    records = result.get("records")
+    if not isinstance(records, list):
+        return []
+    task_ids: list[str] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        task_id = record.get("task_id")
+        if isinstance(task_id, str) and record.get("agent_error") and task_id not in task_ids:
+            task_ids.append(task_id)
+    return task_ids
+
+
+def rewrite_result_without_task_ids(path: Path, task_ids: set[str]) -> int:
+    result = load_result(path)
+    if result is None:
+        return 0
+    records = result.get("records")
+    if not isinstance(records, list):
+        return 0
+    kept_records = [
+        record
+        for record in records
+        if not (isinstance(record, dict) and record.get("task_id") in task_ids)
+    ]
+    removed = len(records) - len(kept_records)
+    if removed <= 0:
+        return 0
+    result["records"] = kept_records
+    result["completed_task_episodes"] = len(kept_records)
+    result["complete"] = False
+    result["paused"] = False
+    result.pop("run_error", None)
+    path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    return removed
+
+
+def describe_task_selection(task_ids: list[str], *, limit: int = 12) -> str:
+    shown = task_ids[:limit]
+    suffix = "" if len(task_ids) <= limit else f"\n... {len(task_ids) - limit} more"
+    return "\n".join(f"{index}. {task_id}" for index, task_id in enumerate(shown, start=1)) + suffix
 
 
 def delete_target_artifact_files(
@@ -1381,6 +1790,7 @@ def launch_target(
     target: RunTarget,
     *,
     watch: bool = True,
+    task_ids: list[str] | None = None,
 ) -> None:
     state = load_state(managed)
     if state_pid_is_running(state):
@@ -1399,8 +1809,11 @@ def launch_target(
         managed.commands_dir,
     ):
         directory.mkdir(parents=True, exist_ok=True)
-    command = build_target_command(managed, target)
-    write_target_command(managed, target)
+    command = build_target_command(managed, target, task_ids=task_ids)
+    if task_ids is None:
+        write_target_command(managed, target)
+    else:
+        write_target_command(managed, target, task_ids=task_ids)
     console_log = managed.target_console_log_path(target)
     with console_log.open("ab") as output:
         process = subprocess.Popen(  # noqa: S603
@@ -1423,12 +1836,19 @@ def launch_target(
         },
     )
     console.print(f"[green]Started[/green] {target.baseline} | {target.label} pid={process.pid}")
+    if task_ids is not None:
+        console.print(f"Task filter: {len(task_ids)} task(s)")
     console.print(f"Console log: {console_log}")
     if watch:
         watch_run_live(managed, target=target, exit_when_inactive=True)
 
 
-def build_target_command(managed: ManagedRun, target: RunTarget) -> list[str]:
+def build_target_command(
+    managed: ManagedRun,
+    target: RunTarget,
+    *,
+    task_ids: list[str] | None = None,
+) -> list[str]:
     config = managed.config
     command = [
         sys.executable,
@@ -1451,6 +1871,9 @@ def build_target_command(managed: ManagedRun, target: RunTarget) -> list[str]:
     ]
     if config.difficulty is not None:
         command.extend(["--difficulty", config.difficulty])
+    if task_ids:
+        command.append("--task-ids")
+        command.extend(task_ids)
     if target.baseline in DETERMINISTIC_BASELINES:
         command.extend(["--deterministic-episodes", str(config.deterministic_episodes)])
         command.append("--skip-llm")
@@ -1694,10 +2117,20 @@ def write_all_target_commands(managed: ManagedRun) -> None:
         write_target_command(managed, target)
 
 
-def write_target_command(managed: ManagedRun, target: RunTarget) -> None:
+def write_target_command(
+    managed: ManagedRun,
+    target: RunTarget,
+    *,
+    task_ids: list[str] | None = None,
+) -> None:
     managed.commands_dir.mkdir(parents=True, exist_ok=True)
-    command = build_target_command(managed, target)
-    managed.target_command_path(target).write_text(
+    command = build_target_command(managed, target, task_ids=task_ids)
+    command_path = (
+        managed.target_command_path(target)
+        if task_ids is None
+        else managed.commands_dir / f"{target.key}.task_filter.ps1"
+    )
+    command_path.write_text(
         powershell_command(command),
         encoding="utf-8",
     )
@@ -1751,6 +2184,7 @@ def watch_run_live(
         console.rule(f"[bold]Live Run: {managed.config.run_id}")
         show_dashboard(managed)
         if selected_target is not None:
+            render_stale_warning(managed, selected_target)
             render_live_log_tail(managed, selected_target, line_count=35)
         else:
             console.print("[dim]No active target. Press q to return.[/dim]")
@@ -1775,6 +2209,20 @@ def watch_run_live(
             stop_active_process(managed, confirm=True, force=True)
         elif key == "c":
             clear_pause(managed)
+
+
+def render_stale_warning(managed: ManagedRun, target: RunTarget) -> None:
+    age_seconds = last_log_update_age_seconds(managed, target)
+    if age_seconds is None or age_seconds < STALE_PROCESS_SECONDS:
+        return
+    console.print(
+        Panel(
+            f"No run or console log update for {format_age(age_seconds)}.\n"
+            "Use p to request a cooperative pause after the current task, "
+            "or s to pause and stop the process now.",
+            title="[red]Stale Process Warning[/red]",
+        )
+    )
 
 
 def render_live_log_tail(
@@ -1891,6 +2339,61 @@ def active_status_text(
     if isinstance(pid, int):
         return f"not running last_pid={pid} target={target_key}"
     return "none"
+
+
+def heartbeat_status_text(managed: ManagedRun) -> str:
+    target = active_target(managed)
+    if target is None:
+        return "inactive"
+    heartbeat = latest_task_heartbeat(managed, target)
+    age_seconds = last_log_update_age_seconds(managed, target)
+    age_text = "unknown" if age_seconds is None else format_age(age_seconds)
+    stale = age_seconds is not None and age_seconds >= STALE_PROCESS_SECONDS
+    stale_text = " [red]STALE[/red]" if stale else ""
+    if heartbeat is None:
+        return f"no task heartbeat yet, last log update {age_text}{stale_text}"
+    return (
+        f"{heartbeat['phase']} {heartbeat['task_id']} "
+        f"task {heartbeat['task_index']}/{heartbeat['total_tasks']} "
+        f"ep {heartbeat['episode_index']}/{heartbeat['total_episodes']}, "
+        f"last log update {age_text}{stale_text}"
+    )
+
+
+def latest_task_heartbeat(managed: ManagedRun, target: RunTarget) -> dict[str, str] | None:
+    path = managed.target_log_path(target)
+    if not path.exists():
+        return None
+    pattern = re.compile(
+        r"TASK (?P<phase>\w+) .*?task=(?P<task_id>\S+) "
+        r"task_index=(?P<task_index>\d+)/(?:\s*)?(?P<total_tasks>\d+) "
+        r"episode=(?P<episode_index>\d+)/(?:\s*)?(?P<total_episodes>\d+)"
+    )
+    for line in reversed(tail_lines(path, 300)):
+        match = pattern.search(line)
+        if match:
+            return match.groupdict()
+    return None
+
+
+def last_log_update_age_seconds(managed: ManagedRun, target: RunTarget) -> float | None:
+    mtimes = [
+        path.stat().st_mtime
+        for path in (managed.target_console_log_path(target), managed.target_log_path(target))
+        if path.exists()
+    ]
+    if not mtimes:
+        return None
+    return max(0.0, time.time() - max(mtimes))
+
+
+def format_age(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.0f}s ago"
+    minutes = seconds / 60
+    if minutes < 60:
+        return f"{minutes:.1f}m ago"
+    return f"{minutes / 60:.1f}h ago"
 
 
 def state_pid_is_running(state: dict[str, Any]) -> bool:

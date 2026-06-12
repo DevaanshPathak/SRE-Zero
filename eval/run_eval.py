@@ -72,6 +72,7 @@ def evaluate(
     base_url_override: str | None = None,
     difficulty: Difficulty | None = None,
     split: BenchmarkSplit | None = None,
+    task_ids_override: list[str] | None = None,
     progress_callback: ProgressCallback | None = None,
     existing_records: list[dict[str, object]] | None = None,
     checkpoint_path: Path | None = None,
@@ -84,7 +85,12 @@ def evaluate(
         for record in records
         if (episode_key := _episode_key(record)) is not None
     }
-    task_ids = list_task_ids(difficulty=difficulty, split=split)
+    task_ids = resolve_task_ids(
+        difficulty=difficulty,
+        split=split,
+        task_ids=task_ids_override,
+        task_range=None,
+    )
     paused = False
 
     for task_index, task_id in enumerate(task_ids):
@@ -112,6 +118,7 @@ def evaluate(
                     base_url_override=base_url_override,
                     difficulty=difficulty,
                     split=split,
+                    selected_task_ids=task_ids_override,
                     task_ids=task_ids,
                     records=records,
                     paused=paused,
@@ -155,6 +162,7 @@ def evaluate(
                 base_url_override=base_url_override,
                 difficulty=difficulty,
                 split=split,
+                selected_task_ids=task_ids_override,
                 task_ids=task_ids,
                 records=records,
                 paused=paused,
@@ -171,6 +179,7 @@ def evaluate(
         base_url_override=base_url_override,
         difficulty=difficulty,
         split=split,
+        selected_task_ids=task_ids_override,
         task_ids=task_ids,
         records=records,
         paused=paused,
@@ -196,19 +205,23 @@ def _evaluation_result(
     base_url_override: str | None,
     difficulty: Difficulty | None,
     split: BenchmarkSplit | None,
+    selected_task_ids: list[str] | None,
     task_ids: list[str],
     records: list[dict[str, object]],
     paused: bool,
     pause_file: Path | None,
     checkpoint_extra: dict[str, object] | None,
 ) -> dict[str, object]:
+    all_task_ids = list_task_ids(difficulty=difficulty, split=split)
     by_task: dict[str, dict[str, float]] = {}
-    for task_id in task_ids:
+    for task_id in all_task_ids:
         task_records = [record for record in records if record.get("task_id") == task_id]
         if task_records:
             by_task[task_id] = aggregate_episode_records(cast(list[dict[str, Any]], task_records))
 
     overall = aggregate_episode_records(cast(list[dict[str, Any]], records))
+    filtered_task_ids = task_ids if selected_task_ids is not None else None
+    expected_task_episodes = len(all_task_ids) * episodes
     result: dict[str, object] = {
         "agent": agent_name,
         "episodes_per_task": episodes,
@@ -221,9 +234,11 @@ def _evaluation_result(
         "standard_score": score_metrics(overall).model_dump(),
         "by_task": by_task,
         "records": records,
-        "expected_task_episodes": len(task_ids) * episodes,
+        "task_ids": all_task_ids,
+        "filtered_task_ids": filtered_task_ids,
+        "expected_task_episodes": expected_task_episodes,
         "completed_task_episodes": len(records),
-        "complete": len(records) >= len(task_ids) * episodes and not paused,
+        "complete": len(records) >= expected_task_episodes and not paused,
         "paused": paused,
     }
     if pause_file is not None:
@@ -231,6 +246,50 @@ def _evaluation_result(
     if checkpoint_extra:
         result.update(checkpoint_extra)
     return result
+
+
+def resolve_task_ids(
+    *,
+    difficulty: Difficulty | None,
+    split: BenchmarkSplit | None,
+    task_ids: list[str] | None,
+    task_range: str | None,
+) -> list[str]:
+    base_task_ids = list_task_ids(difficulty=difficulty, split=split)
+    selected = base_task_ids
+    if task_ids:
+        requested = list(dict.fromkeys(task_ids))
+        unknown = [task_id for task_id in requested if task_id not in base_task_ids]
+        if unknown:
+            available = ", ".join(base_task_ids)
+            raise ValueError(
+                "Task id(s) not available for the selected filters: "
+                f"{', '.join(unknown)}. Available: {available}"
+            )
+        selected = requested
+    if task_range:
+        selected = apply_task_range(selected, task_range)
+    if not selected:
+        raise ValueError("Task selection is empty.")
+    return selected
+
+
+def apply_task_range(task_ids: list[str], task_range: str) -> list[str]:
+    raw = task_range.strip()
+    if not raw:
+        return task_ids
+    if "-" in raw:
+        start_text, end_text = raw.split("-", 1)
+        start = int(start_text.strip())
+        end = int(end_text.strip())
+    else:
+        start = int(raw)
+        end = start
+    if start < 1 or end < start or end > len(task_ids):
+        raise ValueError(
+            f"Task range must be within 1-{len(task_ids)} and start <= end; got {task_range!r}."
+        )
+    return task_ids[start - 1 : end]
 
 
 def _write_checkpoint(checkpoint_path: Path | None, result: dict[str, object]) -> None:
@@ -290,9 +349,30 @@ def main() -> None:
         default=None,
         help="Optional benchmark split. Can be combined with --difficulty.",
     )
+    parser.add_argument(
+        "--task-ids",
+        nargs="*",
+        default=None,
+        help="Run only these task ids after difficulty/split filtering.",
+    )
+    parser.add_argument(
+        "--task-range",
+        default=None,
+        help="Run a 1-based inclusive task range after filtering, for example 1-10.",
+    )
     parser.add_argument("--output", type=Path, default=Path("notes/runs/eval_results.json"))
     args = parser.parse_args()
     output_path = output_file_path(args.output, default_name="eval_results.json")
+    task_ids_override = (
+        resolve_task_ids(
+            difficulty=args.difficulty,
+            split=args.split,
+            task_ids=args.task_ids,
+            task_range=args.task_range,
+        )
+        if args.task_ids or args.task_range
+        else None
+    )
 
     results = evaluate(
         agent_name=args.agent,
@@ -302,6 +382,7 @@ def main() -> None:
         base_url_override=args.base_url,
         difficulty=args.difficulty,
         split=args.split,
+        task_ids_override=task_ids_override,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
