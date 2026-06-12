@@ -102,6 +102,26 @@ def main() -> None:
     normalize_paths(args)
     if args.timeout_seconds is not None:
         os.environ["SREZERO_LLM_TIMEOUT_SECONDS"] = str(args.timeout_seconds)
+    if args.llm_max_retries is not None:
+        os.environ["SREZERO_LLM_MAX_RETRIES"] = str(args.llm_max_retries)
+    if args.llm_min_request_interval_seconds is not None:
+        os.environ["SREZERO_LLM_MIN_REQUEST_INTERVAL_SECONDS"] = str(
+            args.llm_min_request_interval_seconds
+        )
+    if args.llm_rate_limit_requests is not None:
+        os.environ["SREZERO_LLM_RATE_LIMIT_REQUESTS"] = str(args.llm_rate_limit_requests)
+    if args.llm_rate_limit_window_seconds is not None:
+        os.environ["SREZERO_LLM_RATE_LIMIT_WINDOW_SECONDS"] = str(
+            args.llm_rate_limit_window_seconds
+        )
+    if args.llm_rejection_pause_threshold is not None:
+        os.environ["SREZERO_LLM_REJECTION_PAUSE_THRESHOLD"] = str(
+            args.llm_rejection_pause_threshold
+        )
+    if args.llm_rejection_pause_seconds is not None:
+        os.environ["SREZERO_LLM_REJECTION_PAUSE_SECONDS"] = str(
+            args.llm_rejection_pause_seconds
+        )
 
     console = Console()
     plan = build_plan(args)
@@ -122,68 +142,125 @@ def main() -> None:
     runs: list[dict[str, Any]] = []
     mark_rows: list[dict[str, Any]] = []
     run_files: list[dict[str, str]] = []
+    status = "complete"
+    pause_file = None if args.no_pause_file else args.pause_file
 
-    with make_progress(console) as progress:
-        sweep_task = progress.add_task("full sweep", total=len(plan))
-        for index, item in enumerate(plan, start=1):
-            run_total = task_count(args.difficulty) * item.episodes
-            run_task = progress.add_task(
-                run_description(item, index, len(plan)),
-                total=run_total,
-            )
-            log_message = (
-                f"START run={index}/{len(plan)} baseline={item.baseline} "
-                f"model={item.model_label} episodes={item.episodes}"
-            )
-            console.log(log_message)
-            append_log(log_path, log_message)
+    try:
+        with make_progress(console) as progress:
+            sweep_task = progress.add_task("full sweep", total=len(plan))
+            for index, item in enumerate(plan, start=1):
+                if pause_file is not None and pause_file.exists():
+                    status = "paused"
+                    pause_message = f"PAUSE requested by {pause_file}; stopping before run {index}"
+                    console.log(pause_message)
+                    append_log(log_path, pause_message)
+                    break
 
-            result = run_one(
-                baseline=item.baseline,
-                model_label=item.model_label,
-                model_override=item.model_override,
-                episodes=item.episodes,
-                seed=args.seed,
-                base_url_override=args.base_url,
-                difficulty=args.difficulty,
-                progress_callback=progress_callback(progress, run_task, item, index, len(plan)),
-            )
-            result["run_kind"] = item.kind
-            result["command_hint"] = item.command_hint
-            output_path = args.output_dir / item.output_name
-            output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
-            runs.append(result)
-            mark_row = make_mark_row(result, target_steps=args.target_steps)
-            mark_rows.append(mark_row)
-            run_files.append(
-                {
-                    "baseline": item.baseline,
-                    "model": item.model_label,
-                    "path": str(output_path),
-                }
-            )
-            progress.update(run_task, completed=run_total)
-            progress.update(sweep_task, advance=1)
-            error_label = mark_row["agent_error_count"] or (
-                "run" if mark_row["run_error"] else 0
-            )
-            done_message = (
-                f"END run={index}/{len(plan)} baseline={item.baseline} "
-                f"model={item.model_label} score={mark_row['score']:.3f} "
-                f"success={mark_row['metrics']['success_rate']:.3f} "
-                f"errors={error_label} "
-                f"output={output_path}"
-            )
-            console.log(done_message)
-            append_log(log_path, done_message)
+                run_total = task_count(args.difficulty) * item.episodes
+                run_task = progress.add_task(
+                    run_description(item, index, len(plan)),
+                    total=run_total,
+                )
+                output_path = args.output_dir / item.output_name
+                existing_result = load_existing_result(output_path) if args.resume else None
+                if existing_result is not None and result_is_complete(
+                    existing_result,
+                    episodes=item.episodes,
+                    difficulty=args.difficulty,
+                ):
+                    result = existing_result
+                    result["run_kind"] = result.get("run_kind", item.kind)
+                    result["command_hint"] = result.get("command_hint", item.command_hint)
+                    runs.append(result)
+                    mark_row = make_mark_row(result, target_steps=args.target_steps)
+                    mark_rows.append(mark_row)
+                    run_files.append(run_file_row(item, output_path))
+                    progress.update(run_task, completed=run_total)
+                    progress.update(sweep_task, advance=1)
+                    skip_message = (
+                        f"SKIP run={index}/{len(plan)} baseline={item.baseline} "
+                        f"model={item.model_label} output={output_path}"
+                    )
+                    console.log(skip_message)
+                    append_log(log_path, skip_message)
+                    continue
+
+                existing_records = records_from_result(existing_result)
+                log_message = (
+                    f"START run={index}/{len(plan)} baseline={item.baseline} "
+                    f"model={item.model_label} episodes={item.episodes}"
+                )
+                if existing_records:
+                    log_message += f" resume_records={len(existing_records)}"
+                console.log(log_message)
+                append_log(log_path, log_message)
+
+                result = run_one(
+                    baseline=item.baseline,
+                    model_label=item.model_label,
+                    model_override=item.model_override,
+                    episodes=item.episodes,
+                    seed=args.seed,
+                    base_url_override=args.base_url,
+                    difficulty=args.difficulty,
+                    progress_callback=progress_callback(
+                        progress,
+                        run_task,
+                        item,
+                        index,
+                        len(plan),
+                    ),
+                    existing_records=existing_records,
+                    checkpoint_path=output_path,
+                    checkpoint_extra={
+                        "baseline": item.baseline,
+                        "model": item.model_label,
+                        "run_kind": item.kind,
+                        "command_hint": item.command_hint,
+                    },
+                    pause_file=pause_file,
+                )
+                result["run_kind"] = item.kind
+                result["command_hint"] = item.command_hint
+                output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                runs.append(result)
+                mark_row = make_mark_row(result, target_steps=args.target_steps)
+                mark_rows.append(mark_row)
+                run_files.append(run_file_row(item, output_path))
+                completed_episodes = int(result.get("completed_task_episodes", run_total))
+                progress.update(run_task, completed=min(run_total, completed_episodes))
+                progress.update(sweep_task, advance=1)
+                error_label = mark_row["agent_error_count"] or (
+                    "run" if mark_row["run_error"] else 0
+                )
+                done_message = (
+                    f"END run={index}/{len(plan)} baseline={item.baseline} "
+                    f"model={item.model_label} score={mark_row['score']:.3f} "
+                    f"success={mark_row['metrics']['success_rate']:.3f} "
+                    f"errors={error_label} "
+                    f"output={output_path}"
+                )
+                console.log(done_message)
+                append_log(log_path, done_message)
+                if result.get("paused"):
+                    status = "paused"
+                    break
+    except KeyboardInterrupt:
+        status = "interrupted"
+        interrupt_message = "INTERRUPTED by keyboard; completed run files remain resumable"
+        console.log(interrupt_message)
+        append_log(log_path, interrupt_message)
 
     mark_rows.sort(key=lambda row: row["score"], reverse=True)
     summary = {
         "schema_version": 1,
         "generated_at": datetime.now(UTC).isoformat(),
+        "status": status,
         "config": {
             "preset": args.preset,
             "only_baselines": args.only_baselines,
+            "resume": args.resume,
+            "pause_file": str(pause_file) if pause_file is not None else None,
             "seed": args.seed,
             "difficulty": args.difficulty,
             "target_steps": args.target_steps,
@@ -191,6 +268,12 @@ def main() -> None:
             "llm_episodes": args.llm_episodes,
             "base_url_override": bool(args.base_url),
             "timeout_seconds": args.timeout_seconds,
+            "llm_max_retries": args.llm_max_retries,
+            "llm_min_request_interval_seconds": args.llm_min_request_interval_seconds,
+            "llm_rate_limit_requests": args.llm_rate_limit_requests,
+            "llm_rate_limit_window_seconds": args.llm_rate_limit_window_seconds,
+            "llm_rejection_pause_threshold": args.llm_rejection_pause_threshold,
+            "llm_rejection_pause_seconds": args.llm_rejection_pause_seconds,
         },
         "model_sets": model_sets_from_args(args),
         "marks_formula": {
@@ -283,6 +366,42 @@ def parse_args() -> argparse.Namespace:
         help="Set SREZERO_LLM_TIMEOUT_SECONDS for this run.",
     )
     parser.add_argument(
+        "--llm-max-retries",
+        type=int,
+        default=None,
+        help="Set SREZERO_LLM_MAX_RETRIES for provider calls.",
+    )
+    parser.add_argument(
+        "--llm-min-request-interval-seconds",
+        type=float,
+        default=None,
+        help="Set minimum seconds to wait after one LLM request before sending another.",
+    )
+    parser.add_argument(
+        "--llm-rate-limit-requests",
+        type=int,
+        default=None,
+        help="Set maximum LLM requests per rate-limit window.",
+    )
+    parser.add_argument(
+        "--llm-rate-limit-window-seconds",
+        type=float,
+        default=None,
+        help="Set the LLM rate-limit window length in seconds.",
+    )
+    parser.add_argument(
+        "--llm-rejection-pause-threshold",
+        type=int,
+        default=None,
+        help="Pause after this many consecutive failed provider calls.",
+    )
+    parser.add_argument(
+        "--llm-rejection-pause-seconds",
+        type=float,
+        default=None,
+        help="Pause this many seconds after the rejection threshold is hit.",
+    )
+    parser.add_argument(
         "--prompting-models",
         nargs="*",
         default=None,
@@ -314,6 +433,25 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--skip-llm", action="store_true")
     parser.add_argument("--skip-deterministic", action="store_true")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from existing per-run JSON files in --output-dir.",
+    )
+    parser.add_argument(
+        "--pause-file",
+        type=Path,
+        default=Path("notes/runs/pause.flag"),
+        help=(
+            "If this file exists, stop cleanly before the next task or model run. "
+            "Delete it before resuming."
+        ),
+    )
+    parser.add_argument(
+        "--no-pause-file",
+        action="store_true",
+        help="Disable pause-file checks.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -322,6 +460,7 @@ def normalize_paths(args: argparse.Namespace) -> None:
     args.output_dir = repo_path(args.output_dir)
     args.summary_output = output_file_path(args.summary_output, default_name="summary.json")
     args.log_file = output_file_path(args.log_file, default_name="run.log")
+    args.pause_file = repo_path(args.pause_file)
 
 
 def repo_path(path: Path) -> Path:
@@ -339,6 +478,53 @@ def output_file_path(path: Path, *, default_name: str) -> Path:
     if resolved.suffix:
         return resolved
     return resolved / default_name
+
+
+def load_existing_result(output_path: Path) -> dict[str, Any] | None:
+    if not output_path.exists():
+        return None
+    try:
+        data = json.loads(output_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if isinstance(data, dict):
+        return data
+    return None
+
+
+def result_is_complete(
+    result: dict[str, Any],
+    *,
+    episodes: int,
+    difficulty: str | None,
+) -> bool:
+    if result.get("run_error") or result.get("paused"):
+        return False
+    if result.get("complete") is True:
+        return True
+    records = records_from_result(result)
+    return len(records) >= task_count(difficulty) * episodes
+
+
+def records_from_result(result: dict[str, Any] | None) -> list[dict[str, object]]:
+    if result is None:
+        return []
+    records = result.get("records")
+    if not isinstance(records, list):
+        return []
+    typed_records: list[dict[str, object]] = []
+    for record in records:
+        if isinstance(record, dict):
+            typed_records.append(cast(dict[str, object], record))
+    return typed_records
+
+
+def run_file_row(item: PlanItem, output_path: Path) -> dict[str, str]:
+    return {
+        "baseline": item.baseline,
+        "model": item.model_label,
+        "path": str(output_path),
+    }
 
 
 def build_plan(args: argparse.Namespace) -> list[PlanItem]:

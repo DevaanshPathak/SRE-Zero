@@ -30,6 +30,18 @@ Optional per-baseline model variables:
 - `SREZERO_OPEN_SOURCE_MODEL`
 - `SREZERO_FRONTIER_MODEL`
 
+Provider-throttling controls:
+
+- `SREZERO_LLM_MAX_RETRIES`: provider-call retries after an errored request. Default: `5`.
+- `SREZERO_LLM_MIN_REQUEST_INTERVAL_SECONDS`: minimum wait after one LLM request
+  finishes before sending the next request, including retries. Default: `15`.
+- `SREZERO_LLM_RATE_LIMIT_REQUESTS`: maximum provider calls per window. Default: `5`.
+- `SREZERO_LLM_RATE_LIMIT_WINDOW_SECONDS`: rate-limit window length. Default: `60`.
+- `SREZERO_LLM_REJECTION_PAUSE_THRESHOLD`: consecutive failed provider calls before
+  a cooldown pause. Default: `3`.
+- `SREZERO_LLM_REJECTION_PAUSE_SECONDS`: cooldown length after the rejection
+  threshold is hit. Default: `60`.
+
 ## Commands
 
 - Random: `python eval/run_eval.py --agent random --episodes 5`
@@ -38,5 +50,10 @@ Optional per-baseline model variables:
 - ReAct-style: `python eval/run_eval.py --agent react --episodes 1`
 - Open-source LLM: `python eval/run_eval.py --agent open_source --episodes 1`
 - Frontier model: `python eval/run_eval.py --agent frontier --episodes 1`
+
+For long sweeps, prefer `eval/run_all_eval.py --resume`. It writes per-run
+JSON checkpoints and skips completed model runs on restart. To request a clean
+pause, create the configured pause file, which defaults to
+`notes/runs/pause.flag`; remove it before resuming.
 
 LLM baseline results depend on the configured provider, model, decoding settings, and endpoint behavior. For benchmark reporting, record the `.env` model variables, provider type, seed, and episode count.

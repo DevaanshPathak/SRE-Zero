@@ -89,6 +89,12 @@ Then edit `.env`:
 OPENAI_API_KEY=...
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=...
+SREZERO_LLM_MAX_RETRIES=5
+SREZERO_LLM_MIN_REQUEST_INTERVAL_SECONDS=15
+SREZERO_LLM_RATE_LIMIT_REQUESTS=5
+SREZERO_LLM_RATE_LIMIT_WINDOW_SECONDS=60
+SREZERO_LLM_REJECTION_PAUSE_THRESHOLD=3
+SREZERO_LLM_REJECTION_PAUSE_SECONDS=60
 ```
 
 Run LLM baselines:
@@ -106,6 +112,39 @@ Generate a JSON report with raw records and model-wise marks:
 python eval/run_baseline_marks.py --baselines all --episodes 1 --output notes/runs/baseline_marks.json
 python eval/run_baseline_marks.py --baselines prompting react --models openai/gpt-5-mini openai/gpt-5.4-mini
 ```
+
+Manage long baseline sweeps from a terminal UI:
+
+```bash
+python eval/run_tui.py
+```
+
+The TUI creates managed runs under `notes/runs/managed/`, launches one model or
+baseline target at a time, writes per-target logs, supports pause/resume through
+a run-local `pause.flag`, and rebuilds combined summary JSONs from completed
+target files. It includes checklist-based model and target selection, search over
+`notes/available_models.md`, add/remove targets after run creation, queue-script
+export for selected targets, target artifact cleanup, full managed-run deletion,
+target detail views, log tails, and active-process stop controls.
+Model selection opens as a keyboard checklist: use Up/Down to move, Space to
+toggle, Enter to accept, and `/` to filter. Checked rows render as `[x]`;
+unchecked rows render as `[]`.
+Launching a target opens a live monitor that refreshes status and tails logs
+until the child process exits. In that view, `p` requests a cooperative pause,
+`s` requests pause plus process stop, `c` clears the pause flag, and `q` returns
+to the run menu. Cooperative pause is checkpoint-based, so it waits for the
+current task/episode, retry sleep, or provider request to finish, writes the
+partial JSON, and stops before starting the next task/episode.
+
+Long API-backed sweeps can be resumed from per-run JSON files:
+
+```bash
+python eval/run_all_eval.py --only-baselines open_source --resume
+```
+
+To pause a long sweep cleanly, create `notes/runs/pause.flag`. The runner stops
+before the next task or model run, writes partial JSON, and can continue later
+with `--resume` after deleting the pause file.
 
 Run only non-API baselines:
 

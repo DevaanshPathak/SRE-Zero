@@ -7,6 +7,7 @@ import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -52,6 +53,7 @@ def run_episode(task_id: str, agent: Agent, seed: int) -> dict[str, object]:
 
     record: dict[str, object] = {
         "task_id": task_id,
+        "seed": seed,
         "metrics": env.metrics.model_dump(),
         "evidence_coverage": final_info.get("evidence_coverage", 0.0),
         "trajectory": trajectory,
@@ -71,14 +73,53 @@ def evaluate(
     difficulty: Difficulty | None = None,
     split: BenchmarkSplit | None = None,
     progress_callback: ProgressCallback | None = None,
+    existing_records: list[dict[str, object]] | None = None,
+    checkpoint_path: Path | None = None,
+    checkpoint_extra: dict[str, object] | None = None,
+    pause_file: Path | None = None,
 ) -> dict[str, object]:
-    records: list[dict[str, object]] = []
-    by_task: dict[str, dict[str, float]] = {}
+    records: list[dict[str, object]] = list(existing_records or [])
+    completed = {
+        episode_key
+        for record in records
+        if (episode_key := _episode_key(record)) is not None
+    }
     task_ids = list_task_ids(difficulty=difficulty, split=split)
+    paused = False
 
     for task_index, task_id in enumerate(task_ids):
-        task_records = []
         for episode_index in range(episodes):
+            episode_seed = seed + task_index * 10_000 + episode_index
+            episode_key = (task_id, episode_seed)
+            if episode_key in completed:
+                if progress_callback is not None:
+                    progress_callback(
+                        task_id,
+                        task_index + 1,
+                        len(task_ids),
+                        episode_index + 1,
+                        episodes,
+                        "finish",
+                    )
+                continue
+            if pause_file is not None and pause_file.exists():
+                paused = True
+                result = _evaluation_result(
+                    agent_name=agent_name,
+                    episodes=episodes,
+                    seed=seed,
+                    model_override=model_override,
+                    base_url_override=base_url_override,
+                    difficulty=difficulty,
+                    split=split,
+                    task_ids=task_ids,
+                    records=records,
+                    paused=paused,
+                    pause_file=pause_file,
+                    checkpoint_extra=checkpoint_extra,
+                )
+                _write_checkpoint(checkpoint_path, result)
+                return result
             if progress_callback is not None:
                 progress_callback(
                     task_id,
@@ -88,7 +129,6 @@ def evaluate(
                     episodes,
                     "start",
                 )
-            episode_seed = seed + task_index * 10_000 + episode_index
             agent = build_agent(
                 agent_name,
                 episode_seed,
@@ -97,7 +137,7 @@ def evaluate(
             )
             record = run_episode(task_id=task_id, agent=agent, seed=episode_seed)
             records.append(record)
-            task_records.append(record)
+            completed.add(episode_key)
             if progress_callback is not None:
                 progress_callback(
                     task_id,
@@ -107,10 +147,69 @@ def evaluate(
                     episodes,
                     "finish",
                 )
-        by_task[task_id] = aggregate_episode_records(task_records)
+            result = _evaluation_result(
+                agent_name=agent_name,
+                episodes=episodes,
+                seed=seed,
+                model_override=model_override,
+                base_url_override=base_url_override,
+                difficulty=difficulty,
+                split=split,
+                task_ids=task_ids,
+                records=records,
+                paused=paused,
+                pause_file=pause_file,
+                checkpoint_extra=checkpoint_extra,
+            )
+            _write_checkpoint(checkpoint_path, result)
 
-    overall = aggregate_episode_records(records)
-    return {
+    return _evaluation_result(
+        agent_name=agent_name,
+        episodes=episodes,
+        seed=seed,
+        model_override=model_override,
+        base_url_override=base_url_override,
+        difficulty=difficulty,
+        split=split,
+        task_ids=task_ids,
+        records=records,
+        paused=paused,
+        pause_file=pause_file,
+        checkpoint_extra=checkpoint_extra,
+    )
+
+
+def _episode_key(record: dict[str, object]) -> tuple[str, int] | None:
+    task_id = record.get("task_id")
+    seed = record.get("seed")
+    if not isinstance(task_id, str) or not isinstance(seed, int):
+        return None
+    return (task_id, seed)
+
+
+def _evaluation_result(
+    *,
+    agent_name: str,
+    episodes: int,
+    seed: int,
+    model_override: str | None,
+    base_url_override: str | None,
+    difficulty: Difficulty | None,
+    split: BenchmarkSplit | None,
+    task_ids: list[str],
+    records: list[dict[str, object]],
+    paused: bool,
+    pause_file: Path | None,
+    checkpoint_extra: dict[str, object] | None,
+) -> dict[str, object]:
+    by_task: dict[str, dict[str, float]] = {}
+    for task_id in task_ids:
+        task_records = [record for record in records if record.get("task_id") == task_id]
+        if task_records:
+            by_task[task_id] = aggregate_episode_records(cast(list[dict[str, Any]], task_records))
+
+    overall = aggregate_episode_records(cast(list[dict[str, Any]], records))
+    result: dict[str, object] = {
         "agent": agent_name,
         "episodes_per_task": episodes,
         "seed": seed,
@@ -122,7 +221,23 @@ def evaluate(
         "standard_score": score_metrics(overall).model_dump(),
         "by_task": by_task,
         "records": records,
+        "expected_task_episodes": len(task_ids) * episodes,
+        "completed_task_episodes": len(records),
+        "complete": len(records) >= len(task_ids) * episodes and not paused,
+        "paused": paused,
     }
+    if pause_file is not None:
+        result["pause_file"] = str(pause_file)
+    if checkpoint_extra:
+        result.update(checkpoint_extra)
+    return result
+
+
+def _write_checkpoint(checkpoint_path: Path | None, result: dict[str, object]) -> None:
+    if checkpoint_path is None:
+        return
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
 
 def print_results(results: dict[str, object]) -> None:

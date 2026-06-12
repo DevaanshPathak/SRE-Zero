@@ -197,6 +197,10 @@ def run_one(
     difficulty: str | None,
     split: str | None = None,
     progress_callback: ProgressCallback | None = None,
+    existing_records: list[dict[str, object]] | None = None,
+    checkpoint_path: Path | None = None,
+    checkpoint_extra: dict[str, object] | None = None,
+    pause_file: Path | None = None,
 ) -> dict[str, Any]:
     try:
         result = evaluate(
@@ -208,6 +212,10 @@ def run_one(
             difficulty=difficulty,  # type: ignore[arg-type]
             split=split,  # type: ignore[arg-type]
             progress_callback=progress_callback,
+            existing_records=existing_records,
+            checkpoint_path=checkpoint_path,
+            checkpoint_extra=checkpoint_extra,
+            pause_file=pause_file,
         )
     except Exception as exc:  # noqa: BLE001
         result = {

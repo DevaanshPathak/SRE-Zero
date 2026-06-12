@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from threading import Lock
+from typing import Any, Literal, cast
 
 LLMProfile = Literal["prompting", "react", "open_source", "frontier"]
 
@@ -22,6 +25,26 @@ class LLMConfig:
     api_key: str = ""
     temperature: float = 0.0
     timeout_seconds: float = 60.0
+    max_retries: int = 5
+    min_request_interval_seconds: float = 15.0
+    rate_limit_requests: int = 5
+    rate_limit_window_seconds: float = 60.0
+    rejection_pause_threshold: int = 3
+    rejection_pause_seconds: float = 60.0
+
+    def __post_init__(self) -> None:
+        if self.max_retries < 0:
+            raise ValueError("max_retries must be non-negative.")
+        if self.min_request_interval_seconds < 0:
+            raise ValueError("min_request_interval_seconds must be non-negative.")
+        if self.rate_limit_requests < 0:
+            raise ValueError("rate_limit_requests must be non-negative.")
+        if self.rate_limit_window_seconds < 0:
+            raise ValueError("rate_limit_window_seconds must be non-negative.")
+        if self.rejection_pause_threshold < 0:
+            raise ValueError("rejection_pause_threshold must be non-negative.")
+        if self.rejection_pause_seconds < 0:
+            raise ValueError("rejection_pause_seconds must be non-negative.")
 
     @classmethod
     def from_env(
@@ -41,6 +64,24 @@ class LLMConfig:
         api_key = _env_first(f"{profile_prefix}_API_KEY", "OPENAI_API_KEY")
         temperature = _float_env("SREZERO_LLM_TEMPERATURE", default=0.0)
         timeout_seconds = _float_env("SREZERO_LLM_TIMEOUT_SECONDS", default=60.0)
+        max_retries = _int_env("SREZERO_LLM_MAX_RETRIES", default=5)
+        min_request_interval_seconds = _float_env(
+            "SREZERO_LLM_MIN_REQUEST_INTERVAL_SECONDS",
+            default=15.0,
+        )
+        rate_limit_requests = _int_env("SREZERO_LLM_RATE_LIMIT_REQUESTS", default=5)
+        rate_limit_window_seconds = _float_env(
+            "SREZERO_LLM_RATE_LIMIT_WINDOW_SECONDS",
+            default=60.0,
+        )
+        rejection_pause_threshold = _int_env(
+            "SREZERO_LLM_REJECTION_PAUSE_THRESHOLD",
+            default=3,
+        )
+        rejection_pause_seconds = _float_env(
+            "SREZERO_LLM_REJECTION_PAUSE_SECONDS",
+            default=60.0,
+        )
 
         if not base_url:
             raise ValueError("Missing OPENAI_BASE_URL in environment or .env.")
@@ -57,6 +98,12 @@ class LLMConfig:
             api_key=api_key,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            min_request_interval_seconds=min_request_interval_seconds,
+            rate_limit_requests=rate_limit_requests,
+            rate_limit_window_seconds=rate_limit_window_seconds,
+            rejection_pause_threshold=rejection_pause_threshold,
+            rejection_pause_seconds=rejection_pause_seconds,
         )
 
 
@@ -87,6 +134,54 @@ class OpenAICompatibleChatClient:
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
 
+        attempt_count = self.config.max_retries + 1
+        errors: list[str] = []
+        for attempt in range(1, attempt_count + 1):
+            try:
+                content = self._complete_once(endpoint, payload, headers)
+                _RATE_LIMITER.note_request_succeeded()
+                return content
+            except RuntimeError as exc:
+                errors.append(str(exc))
+                _RATE_LIMITER.note_request_failed(self.config)
+                if attempt >= attempt_count:
+                    break
+
+        last_error = errors[-1] if errors else "unknown provider error"
+        if len(errors) == 1:
+            raise RuntimeError(f"LLM request failed after 1 attempt: {last_error}")
+        raise RuntimeError(
+            f"LLM request failed after {attempt_count} attempts. "
+            f"Last error: {last_error}"
+        )
+
+    def _complete_once(
+        self,
+        endpoint: str,
+        payload: dict[str, object],
+        headers: dict[str, str],
+    ) -> str:
+        body = self._post_json(endpoint, payload, headers)
+        try:
+            data: dict[str, Any] = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("LLM provider returned invalid JSON.") from exc
+
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RuntimeError(f"Unexpected chat completions response: {data}") from exc
+        if not isinstance(content, str):
+            raise RuntimeError(f"Unexpected message content type: {type(content).__name__}")
+        return content.strip()
+
+    def _post_json(
+        self,
+        endpoint: str,
+        payload: dict[str, object],
+        headers: dict[str, str],
+    ) -> str:
+        _RATE_LIMITER.wait_for_slot(self.config)
         request = urllib.request.Request(
             endpoint,
             data=json.dumps(payload).encode("utf-8"),
@@ -95,21 +190,102 @@ class OpenAICompatibleChatClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=self.config.timeout_seconds) as response:
-                body = response.read().decode("utf-8")
+                return cast(bytes, response.read()).decode("utf-8")
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"LLM provider returned HTTP {exc.code}: {error_body}") from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Could not reach LLM provider: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise RuntimeError("LLM provider request timed out.") from exc
+        finally:
+            _RATE_LIMITER.note_request_finished()
 
-        data: dict[str, Any] = json.loads(body)
-        try:
-            content = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError(f"Unexpected chat completions response: {data}") from exc
-        if not isinstance(content, str):
-            raise RuntimeError(f"Unexpected message content type: {type(content).__name__}")
-        return content.strip()
+
+class _ProviderRateLimiter:
+    """Process-wide throttle for optional LLM calls.
+
+    `run_eval` creates a fresh agent/client for each task episode, so the throttle
+    must live at module scope rather than on a client instance.
+    """
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._request_starts: deque[float] = deque()
+        self._last_finished: float | None = None
+        self._consecutive_failures = 0
+
+    def wait_for_slot(self, config: LLMConfig) -> None:
+        while True:
+            wait_seconds = self._seconds_until_available(config)
+            if wait_seconds <= 0:
+                return
+            time.sleep(wait_seconds)
+
+    def note_request_finished(self) -> None:
+        with self._lock:
+            self._last_finished = time.monotonic()
+
+    def note_request_succeeded(self) -> None:
+        with self._lock:
+            self._consecutive_failures = 0
+
+    def note_request_failed(self, config: LLMConfig) -> None:
+        pause_seconds = 0.0
+        with self._lock:
+            if (
+                config.rejection_pause_threshold <= 0
+                or config.rejection_pause_seconds <= 0
+            ):
+                return
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= config.rejection_pause_threshold:
+                self._consecutive_failures = 0
+                pause_seconds = config.rejection_pause_seconds
+        if pause_seconds > 0:
+            time.sleep(pause_seconds)
+
+    def _seconds_until_available(self, config: LLMConfig) -> float:
+        with self._lock:
+            now = time.monotonic()
+            self._prune_old_starts(now, config.rate_limit_window_seconds)
+
+            wait_seconds = 0.0
+            if (
+                config.min_request_interval_seconds > 0
+                and self._last_finished is not None
+            ):
+                since_last_finished = now - self._last_finished
+                wait_seconds = max(
+                    wait_seconds,
+                    config.min_request_interval_seconds - since_last_finished,
+                )
+
+            if (
+                config.rate_limit_requests > 0
+                and config.rate_limit_window_seconds > 0
+                and len(self._request_starts) >= config.rate_limit_requests
+            ):
+                oldest_start = self._request_starts[0]
+                wait_seconds = max(
+                    wait_seconds,
+                    config.rate_limit_window_seconds - (now - oldest_start),
+                )
+
+            if wait_seconds <= 0:
+                self._request_starts.append(now)
+                return 0.0
+            return wait_seconds
+
+    def _prune_old_starts(self, now: float, window_seconds: float) -> None:
+        if window_seconds <= 0:
+            self._request_starts.clear()
+            return
+        while self._request_starts and now - self._request_starts[0] >= window_seconds:
+            self._request_starts.popleft()
+
+
+_RATE_LIMITER = _ProviderRateLimiter()
 
 
 def load_env_file(path: Path | None = None) -> dict[str, str]:
@@ -164,6 +340,16 @@ def _float_env(key: str, *, default: float) -> float:
         return float(value)
     except ValueError as exc:
         raise ValueError(f"{key} must be a float, got {value!r}") from exc
+
+
+def _int_env(key: str, *, default: int) -> int:
+    value = os.environ.get(key, "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{key} must be an integer, got {value!r}") from exc
 
 
 def _normalize_base_url(base_url: str) -> str:
