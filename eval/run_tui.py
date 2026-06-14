@@ -2541,7 +2541,39 @@ def state_pid_is_running(state: dict[str, Any]) -> bool:
     pid = state.get("pid")
     if not isinstance(pid, int):
         return False
-    return is_pid_running(pid)
+    if not is_pid_running(pid):
+        return False
+    return state_pid_matches_command(state, pid)
+
+
+def state_pid_matches_command(state: dict[str, Any], pid: int) -> bool:
+    command = state.get("command")
+    if not isinstance(command, list):
+        return True
+    command_parts = [part for part in command if isinstance(part, str)]
+    markers = expected_process_markers(command_parts)
+    if not markers:
+        return True
+    command_line = process_command_line(pid)
+    if command_line is None:
+        return True
+    lowered = command_line.lower()
+    return all(marker.lower() in lowered for marker in markers)
+
+
+def expected_process_markers(command: list[str]) -> list[str]:
+    if len(command) < 2:
+        return []
+    markers = [Path(command[1]).name]
+    for flag in ("--summary-output", "--log-file"):
+        try:
+            flag_index = command.index(flag)
+        except ValueError:
+            continue
+        value_index = flag_index + 1
+        if value_index < len(command):
+            markers.append(Path(command[value_index]).name)
+    return [marker for marker in markers if marker]
 
 
 def is_pid_running(pid: int) -> bool:
@@ -2560,6 +2592,35 @@ def is_pid_running(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+def process_command_line(pid: int) -> str | None:
+    try:
+        if os.name == "nt":
+            command = (
+                "$p = Get-CimInstance Win32_Process "
+                f'-Filter "ProcessId = {pid}"; '
+                "if ($p) { $p.CommandLine }"
+            )
+            result = subprocess.run(  # noqa: S603
+                ["powershell", "-NoProfile", "-Command", command],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+        else:
+            result = subprocess.run(  # noqa: S603
+                ["ps", "-p", str(pid), "-o", "command="],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    command_line = result.stdout.strip()
+    return command_line or None
 
 
 def load_result(path: Path) -> dict[str, Any] | None:

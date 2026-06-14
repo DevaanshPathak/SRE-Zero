@@ -23,6 +23,7 @@ from run_tui import (  # noqa: E402
     delete_managed_run_directory,
     delete_target_artifact_files,
     errored_task_ids,
+    expected_process_markers,
     filtered_models,
     filtered_targets,
     load_queue,
@@ -38,6 +39,7 @@ from run_tui import (  # noqa: E402
     safe_target_key,
     save_queue,
     selected_models_in_order,
+    state_pid_matches_command,
     tail_lines,
     update_run_targets,
     write_queue_script,
@@ -182,6 +184,64 @@ def test_active_status_text_mentions_pause_request(monkeypatch: pytest.MonkeyPat
     text = active_status_text({"pid": 123, "target_key": "target"}, pause_requested=True)
 
     assert "pause requested" in text
+
+
+def test_expected_process_markers_include_script_summary_and_log() -> None:
+    markers = expected_process_markers(
+        [
+            "python",
+            "D:/SRE-Zero/eval/run_all_eval.py",
+            "--summary-output",
+            "notes/runs/target.summary.json",
+            "--log-file",
+            "notes/runs/target.run.log",
+        ]
+    )
+
+    assert markers == ["run_all_eval.py", "target.summary.json", "target.run.log"]
+
+
+def test_state_pid_matches_command_rejects_reused_pid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "command": [
+            "python",
+            "D:/SRE-Zero/eval/run_all_eval.py",
+            "--summary-output",
+            "notes/runs/target.summary.json",
+            "--log-file",
+            "notes/runs/target.run.log",
+        ],
+    }
+    monkeypatch.setattr(run_tui, "process_command_line", lambda pid: "Code.exe --reuse-window")
+
+    assert not state_pid_matches_command(state, 123)
+
+
+def test_state_pid_matches_command_accepts_matching_eval_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "command": [
+            "python",
+            "D:/SRE-Zero/eval/run_all_eval.py",
+            "--summary-output",
+            "notes/runs/target.summary.json",
+            "--log-file",
+            "notes/runs/target.run.log",
+        ],
+    }
+    monkeypatch.setattr(
+        run_tui,
+        "process_command_line",
+        lambda pid: (
+            "python D:/SRE-Zero/eval/run_all_eval.py --summary-output "
+            "notes/runs/target.summary.json --log-file notes/runs/target.run.log"
+        ),
+    )
+
+    assert state_pid_matches_command(state, 123)
 
 
 def test_selected_models_in_order_preserves_candidate_order_with_extras() -> None:
