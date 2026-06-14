@@ -254,6 +254,10 @@ class ManagedRun:
         return self.run_dir / "manager_state.json"
 
     @property
+    def queue_worker_state_path(self) -> Path:
+        return self.run_dir / "queue_worker_state.json"
+
+    @property
     def summary_path(self) -> Path:
         return self.run_dir / "summary.json"
 
@@ -283,6 +287,12 @@ class ManagedRun:
 
 def main() -> None:
     args = parse_args()
+    if args.queue_worker_run:
+        run_queue_worker(
+            load_run(args.queue_worker_run),
+            max_targets=args.queue_worker_max_targets,
+        )
+        return
     if args.run:
         open_run(load_run(args.run))
         return
@@ -320,6 +330,17 @@ def main() -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Manage SRE-Zero baseline runs in a TUI.")
     parser.add_argument("--run", default=None, help="Open a managed run id directly.")
+    parser.add_argument(
+        "--queue-worker-run",
+        default=None,
+        help="Internal: play the managed queue for this run id without interactive UI.",
+    )
+    parser.add_argument(
+        "--queue-worker-max-targets",
+        type=int,
+        default=None,
+        help="Internal: maximum queued targets for the queue worker to run.",
+    )
     return parser.parse_args()
 
 
@@ -1115,12 +1136,14 @@ def show_dashboard(managed: ManagedRun) -> None:
     state = load_state(managed)
     pause_status = "present" if managed.pause_file.exists() else "clear"
     active = active_status_text(state, pause_requested=managed.pause_file.exists())
+    queue_worker = queue_worker_status_text(managed)
     heartbeat = heartbeat_status_text(managed)
     console.print(
         Panel(
             f"folder: {managed.run_dir}\n"
             f"difficulty: {managed.config.difficulty or 'all'}\n"
             f"queue: {queue_status_text(managed)}\n"
+            f"queue worker: {queue_worker}\n"
             f"pause file: {pause_status}\n"
             f"active: {active}\n"
             f"heartbeat: {heartbeat}",
@@ -1391,6 +1414,10 @@ def show_queue(managed: ManagedRun) -> None:
 
 
 def play_queue(managed: ManagedRun, *, max_targets: int | None = None) -> None:
+    if queue_worker_is_running(managed):
+        console.print("[yellow]The managed queue worker is already running.[/yellow]")
+        watch_run_live(managed, target=active_target(managed), exit_when_inactive=False)
+        return
     if state_pid_is_running(load_state(managed)):
         console.print("[yellow]A managed target is already running.[/yellow]")
         return
@@ -1404,44 +1431,141 @@ def play_queue(managed: ManagedRun, *, max_targets: int | None = None) -> None:
         else:
             return
 
+    if not start_queue_worker(managed, max_targets=max_targets):
+        return
+    time.sleep(0.5)
+    watch_run_live(managed, target=active_target(managed), exit_when_inactive=False)
+
+
+def start_queue_worker(managed: ManagedRun, *, max_targets: int | None) -> bool:
+    if queue_worker_is_running(managed):
+        console.print("[yellow]The managed queue worker is already running.[/yellow]")
+        return False
+    managed.logs_dir.mkdir(parents=True, exist_ok=True)
+    command = build_queue_worker_command(managed, max_targets=max_targets)
+    worker_log = managed.logs_dir / "queue_worker.console.log"
+    with worker_log.open("ab") as output:
+        process = subprocess.Popen(  # noqa: S603
+            command,
+            cwd=ROOT,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+    save_queue_worker_state(
+        managed,
+        {
+            "pid": process.pid,
+            "started_at": datetime.now(UTC).isoformat(),
+            "command": command,
+            "log": str(worker_log),
+            "max_targets": max_targets,
+        },
+    )
+    console.print(f"[green]Started queue worker[/green] pid={process.pid}")
+    console.print(f"Queue worker log: {worker_log}")
+    console.print("[dim]Press q in live logs to return; the queue worker will continue.[/dim]")
+    return True
+
+
+def build_queue_worker_command(
+    managed: ManagedRun,
+    *,
+    max_targets: int | None,
+) -> list[str]:
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--queue-worker-run",
+        managed.config.run_id,
+    ]
+    if max_targets is not None:
+        command.extend(["--queue-worker-max-targets", str(max_targets)])
+    return command
+
+
+def run_queue_worker(managed: ManagedRun, *, max_targets: int | None) -> None:
+    save_queue_worker_state(
+        managed,
+        {
+            "pid": os.getpid(),
+            "started_at": datetime.now(UTC).isoformat(),
+            "command": sys.argv,
+            "max_targets": max_targets,
+        },
+    )
     launched = 0
-    while max_targets is None or launched < max_targets:
-        prune_completed_queue(managed)
-        target = next_queued_target(managed)
-        if target is None:
-            console.print("[green]No queued runnable targets remain.[/green]")
-            return
-
-        launch_target(managed, target, watch=False)
-        launched += 1
-        watch_run_live(managed, target=target, exit_when_inactive=True)
-        refresh_state_if_needed(managed)
-
-        if active_target(managed) is not None:
-            console.print("[yellow]Queue paused because a target is still running.[/yellow]")
-            return
-
-        status = target_status(managed, target)
-        if status == "complete":
-            remove_targets_from_queue(managed, [target])
-            console.print(
-                f"[green]Completed and dequeued[/green] {target.baseline} | {target.label}"
-            )
+    try:
+        while max_targets is None or launched < max_targets:
+            refresh_state_if_needed(managed)
             if managed.pause_file.exists():
-                console.print("[yellow]Pause flag is set; queue playback stopped.[/yellow]")
+                console.print("[yellow]Queue worker stopped because pause flag is set.[/yellow]")
                 return
-            continue
-        if status == "error":
+            prune_completed_queue(managed)
+            target = next_queued_target(managed)
+            if target is None:
+                console.print("[green]No queued runnable targets remain.[/green]")
+                return
+            if state_pid_is_running(load_state(managed)):
+                console.print("[yellow]Queue worker found an active target; waiting.[/yellow]")
+                wait_for_active_target_exit(managed)
+                continue
+
+            console.print(f"QUEUE target start {target.baseline} | {target.label}")
+            launched += 1
+            if not launch_target(
+                managed,
+                target,
+                watch=False,
+                prompt_on_pause=False,
+            ):
+                return
+            wait_for_active_target_exit(managed, target=target)
+            refresh_state_if_needed(managed)
+
+            status = target_status(managed, target)
+            if status == "complete":
+                remove_targets_from_queue(managed, [target])
+                console.print(f"QUEUE target complete {target.baseline} | {target.label}")
+                continue
+            if managed.pause_file.exists():
+                console.print(
+                    f"[yellow]Queue worker stopped after pause on {target.baseline} | "
+                    f"{target.label}.[/yellow]"
+                )
+                return
+            if status == "error":
+                console.print(
+                    f"[red]Queue worker stopped after target error:[/red] "
+                    f"{target.baseline} | {target.label}"
+                )
+                return
             console.print(
-                f"[red]Queued target ended with an error:[/red] "
+                f"[yellow]Queue worker stopped with target status {status}:[/yellow] "
                 f"{target.baseline} | {target.label}"
             )
             return
-        console.print(
-            f"[yellow]Queue stopped with target status {status}:[/yellow] "
-            f"{target.baseline} | {target.label}"
-        )
-        return
+    finally:
+        state = load_queue_worker_state(managed)
+        state["finished_at"] = datetime.now(UTC).isoformat()
+        state["launched"] = launched
+        save_queue_worker_state(managed, state)
+
+
+def wait_for_active_target_exit(
+    managed: ManagedRun,
+    *,
+    target: RunTarget | None = None,
+    refresh_seconds: float = 2.0,
+) -> None:
+    while True:
+        refresh_state_if_needed(managed)
+        active = active_target(managed)
+        if active is None:
+            return
+        if target is not None and active.key != target.key:
+            return
+        time.sleep(refresh_seconds)
 
 
 def load_queue(managed: ManagedRun) -> list[str]:
@@ -1915,16 +2039,20 @@ def launch_target(
     *,
     watch: bool = True,
     task_ids: list[str] | None = None,
-) -> None:
+    prompt_on_pause: bool = True,
+) -> bool:
     state = load_state(managed)
     if state_pid_is_running(state):
         console.print("[yellow]A managed target is already running.[/yellow]")
-        return
+        return False
     if managed.pause_file.exists():
+        if not prompt_on_pause:
+            console.print("[yellow]Pause flag exists; target launch skipped.[/yellow]")
+            return False
         if Confirm.ask("Pause flag exists. Remove it before launch?", default=True):
             clear_pause(managed)
         else:
-            return
+            return False
 
     for directory in (
         managed.output_dir,
@@ -1965,6 +2093,7 @@ def launch_target(
     console.print(f"Console log: {console_log}")
     if watch:
         watch_run_live(managed, target=target, exit_when_inactive=True)
+    return True
 
 
 def build_target_command(
@@ -2445,6 +2574,51 @@ def load_state(managed: ManagedRun) -> dict[str, Any]:
 
 def save_state(managed: ManagedRun, state: dict[str, object]) -> None:
     managed.state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def load_queue_worker_state(managed: ManagedRun) -> dict[str, Any]:
+    if not managed.queue_worker_state_path.exists():
+        return {}
+    try:
+        data = json.loads(managed.queue_worker_state_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if isinstance(data, dict):
+        return data
+    return {}
+
+
+def save_queue_worker_state(managed: ManagedRun, state: dict[str, object]) -> None:
+    managed.queue_worker_state_path.parent.mkdir(parents=True, exist_ok=True)
+    managed.queue_worker_state_path.write_text(
+        json.dumps(state, indent=2),
+        encoding="utf-8",
+    )
+
+
+def queue_worker_is_running(managed: ManagedRun) -> bool:
+    state = load_queue_worker_state(managed)
+    pid = state.get("pid")
+    if not isinstance(pid, int) or not is_pid_running(pid):
+        return False
+    command_line = process_command_line(pid)
+    if command_line is None:
+        return True
+    lowered = command_line.lower()
+    return "run_tui.py" in lowered and managed.config.run_id.lower() in lowered
+
+
+def queue_worker_status_text(managed: ManagedRun) -> str:
+    state = load_queue_worker_state(managed)
+    pid = state.get("pid")
+    max_targets = state.get("max_targets")
+    max_text = "all" if max_targets is None else str(max_targets)
+    if isinstance(pid, int) and queue_worker_is_running(managed):
+        return f"running pid={pid} max_targets={max_text}"
+    finished_at = state.get("finished_at")
+    if isinstance(pid, int) and isinstance(finished_at, str):
+        return f"not running last_pid={pid} finished={finished_at}"
+    return "none"
 
 
 def refresh_state_if_needed(managed: ManagedRun) -> None:

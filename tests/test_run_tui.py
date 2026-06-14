@@ -16,6 +16,7 @@ from run_tui import (  # noqa: E402
     active_status_text,
     append_targets_to_queue,
     apply_model_checklist_command,
+    build_queue_worker_command,
     build_target_command,
     checkbox,
     checklist_page,
@@ -34,6 +35,7 @@ from run_tui import (  # noqa: E402
     powershell_command,
     queue_status_text,
     queue_targets,
+    queue_worker_status_text,
     repair_task_ids,
     rewrite_result_without_task_ids,
     safe_target_key,
@@ -78,6 +80,17 @@ def test_build_target_command_for_deterministic_baseline(tmp_path) -> None:
     assert "--skip-deterministic" not in command
 
 
+def test_build_queue_worker_command_targets_run_and_limit(tmp_path) -> None:
+    managed = sample_run(tmp_path, [RunTarget("random")])
+    command = build_queue_worker_command(managed, max_targets=2)
+
+    assert "run_tui.py" in command[1]
+    assert "--queue-worker-run" in command
+    assert "test-run" in command
+    assert "--queue-worker-max-targets" in command
+    assert "2" in command
+
+
 def test_powershell_command_uses_continuation_lines() -> None:
     text = powershell_command(["python", "eval/run_all_eval.py", "--model", "a/b:c"])
 
@@ -111,9 +124,13 @@ def test_open_source_tui_candidate_catalog_includes_blog_queue_and_fallbacks() -
     for model in [
         "mistralai/mistral-small-3.2-24b-instruct",
         "openai/gpt-oss-20b:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
+        "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+        "meta-llama/llama-4-scout",
         "poolside/laguna-xs.2:free",
         "openai/gpt-oss-120b:free",
+        "nex-agi/nex-n2-pro:free",
+        "moonshotai/kimi-k2.7-code",
+        "z-ai/glm-5.1",
     ]:
         assert model in candidates
 
@@ -184,6 +201,25 @@ def test_active_status_text_mentions_pause_request(monkeypatch: pytest.MonkeyPat
     text = active_status_text({"pid": 123, "target_key": "target"}, pause_requested=True)
 
     assert "pause requested" in text
+
+
+def test_queue_worker_status_text_reports_running(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    managed = sample_run(tmp_path, [RunTarget("random")])
+    run_tui.save_queue_worker_state(
+        managed,
+        {"pid": 123, "max_targets": 2},
+    )
+    monkeypatch.setattr(run_tui, "is_pid_running", lambda pid: True)
+    monkeypatch.setattr(
+        run_tui,
+        "process_command_line",
+        lambda pid: "python D:/SRE-Zero/eval/run_tui.py --queue-worker-run test-run",
+    )
+
+    assert "running pid=123" in queue_worker_status_text(managed)
 
 
 def test_expected_process_markers_include_script_summary_and_log() -> None:
