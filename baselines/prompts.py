@@ -21,6 +21,23 @@ ALLOWED_ACTIONS_TEXT = """Allowed actions:
 - resolve_incident(root_cause, fix)
 - escalate(reason)"""
 
+ACTION_CONTRACT_TEXT = """Action-call contract:
+- Use exactly one simulator action call.
+- If the prompt asks for Thought/Action format, put the call only on the Action line.
+- Do not use Markdown, JSON, code fences, bullets, or prose.
+- Do not prefix actions with a namespace such as sre_zero.
+- Valid examples:
+  inspect_logs(database)
+  inspect_metrics(cache)
+  inspect_config(web_server, TIMEOUT_MS)
+  update_config(database, DB_POOL_SIZE, 200)
+  restart_service(cache)
+  resolve_incident(database connection pool exhaustion, increase database DB_POOL_SIZE)
+- Invalid examples:
+  sre_zero.check_cache_status()
+  Action: I would inspect cache logs
+  {"action": "inspect_logs", "service": "cache"}"""
+
 
 @dataclass(frozen=True)
 class PromptTemplate:
@@ -44,6 +61,7 @@ PROMPTING_TEMPLATE = PromptTemplate(
         "The action must include required arguments in parentheses. "
         "Bad: inspect_metrics. Good: inspect_metrics(cache).\n\n"
         f"{ALLOWED_ACTIONS_TEXT}\n\n"
+        f"{ACTION_CONTRACT_TEXT}\n\n"
         f"Valid services: {VALID_SERVICES_TEXT}."
     ),
     user_prefix="Choose the next incident-response action from this observation.",
@@ -60,6 +78,7 @@ REACT_TEMPLATE = PromptTemplate(
         "Action: <one valid action call>\n\n"
         "The action must include required arguments in parentheses. "
         "Bad: inspect_logs. Good: inspect_logs(web_server).\n\n"
+        f"{ACTION_CONTRACT_TEXT}\n\n"
         f"Valid services: {VALID_SERVICES_TEXT}."
     ),
     user_prefix="Observation:",

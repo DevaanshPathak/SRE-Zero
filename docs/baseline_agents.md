@@ -13,6 +13,8 @@ behavior and failure modes, not to be a tuned agent stack.
 | `prompting` | yes | Sends the current observation to an OpenAI-compatible chat endpoint and asks for one action. |
 | `react` | yes | Maintains a compact Thought/Action history and asks for one action per step. |
 | `open_source` | yes | Prompting profile for local or hosted OpenAI-compatible open-source models. |
+| `open_source_react` | yes | ReAct loop using the open-source model profile. Use this when comparing open-weight models with memory. |
+| `guided_open_source` | yes | Open-source model profile with a small controller that enforces valid actions, evidence before remediation, and no final resolution before remediation. |
 | `frontier` | yes | ReAct profile for stronger hosted models. |
 
 ## Prompt Templates
@@ -39,6 +41,11 @@ Action: <one valid action call>
 
 Only the `Action:` line is executed by the environment. The reasoning text is
 kept in the model context but is not treated as a simulator action.
+
+The guided baseline is a harness baseline rather than a pure prompting baseline.
+It does not read hidden root causes or correct fixes. It only uses public
+observations to reject malformed actions, discourage remediation before evidence,
+and prevent `resolve_incident(...)` before a remediation attempt.
 
 ## Agent Runner
 
@@ -76,6 +83,16 @@ python eval/run_baseline_marks.py --baselines all --no-api --episodes 3 \
 
 Use `eval/run_all_eval.py` for full sweeps when API-backed LLM runs are intended.
 
+For open-weight comparisons, report both prompting and ReAct-style variants when
+budget allows:
+
+```bash
+python eval/run_all_eval.py --only-baselines open_source open_source_react guided_open_source \
+  --open-source-models qwen/qwen3.6-35b-a3b \
+  --open-source-react-models qwen/qwen3.6-35b-a3b \
+  --guided-open-source-models qwen/qwen3.6-35b-a3b
+```
+
 ## No-API Baseline Table
 
 The latest no-API smoke table was generated with deterministic baselines only:
@@ -90,6 +107,8 @@ The API-backed baselines were intentionally skipped for this table:
 - `prompting`
 - `react`
 - `open_source`
+- `open_source_react`
+- `guided_open_source`
 - `frontier`
 
 ## Failure Examples
@@ -132,6 +151,10 @@ LLM baseline results should report:
 - task split,
 - timeout,
 - provider or parsing errors.
+- difficulty-split marks from `difficulty_marks.rows`,
+- partial-capability metrics such as root-cause identification and correct
+  remediation rate,
+- failure-mode counts from `failure_modes`.
 
 Do not compare LLM results against deterministic results without noting that the
 scripted expert has task-specific policy access and is an upper-bound baseline.

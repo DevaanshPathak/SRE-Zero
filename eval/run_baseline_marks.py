@@ -31,7 +31,14 @@ from baselines import AGENT_CHOICES  # noqa: E402
 from srezero.llm_config import load_env_file  # noqa: E402
 from srezero.scoring import STANDARD_MARK_WEIGHTS, ZERO_METRICS, score_metrics  # noqa: E402
 
-LLM_BASELINES = {"prompting", "react", "open_source", "frontier"}
+LLM_BASELINES = {
+    "prompting",
+    "react",
+    "open_source",
+    "open_source_react",
+    "guided_open_source",
+    "frontier",
+}
 MARK_WEIGHTS = STANDARD_MARK_WEIGHTS
 ZERO_OVERALL = ZERO_METRICS
 
@@ -47,6 +54,7 @@ def main() -> None:
     models = args.models or []
     runs: list[dict[str, Any]] = []
     mark_rows: list[dict[str, Any]] = []
+    difficulty_mark_rows: list[dict[str, Any]] = []
 
     for baseline in baselines:
         for model_label, model_override in run_targets(baseline, models):
@@ -72,8 +80,14 @@ def main() -> None:
             )
             runs.append(result)
             mark_rows.append(make_mark_row(result, target_steps=args.target_steps))
+            difficulty_mark_rows.extend(
+                make_difficulty_mark_rows(result, target_steps=args.target_steps)
+            )
 
     mark_rows.sort(key=lambda row: row["score"], reverse=True)
+    difficulty_mark_rows.sort(
+        key=lambda row: (str(row["difficulty"]), -float(row["score"]))
+    )
     output = {
         "schema_version": 1,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -102,11 +116,16 @@ def main() -> None:
             "by_baseline": group_marks_by_baseline(mark_rows),
             "pairwise_deltas": pairwise_deltas_by_baseline(mark_rows),
         },
+        "difficulty_marks": {
+            "rows": difficulty_mark_rows,
+            "by_difficulty": group_marks_by_difficulty(difficulty_mark_rows),
+        },
         "runs": runs,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(output, indent=2), encoding="utf-8")
     print_marks(mark_rows, args.output)
+    print_difficulty_marks(difficulty_mark_rows)
     if skipped_baselines:
         print(f"Skipped API-backed baselines due to --no-api: {', '.join(skipped_baselines)}")
 
@@ -203,7 +222,12 @@ def run_targets(baseline: str, models: list[str]) -> list[tuple[str, str | None]
 
 def default_model_label(baseline: str) -> str:
     load_env_file()
-    profile_key = f"SREZERO_{baseline.upper()}_MODEL"
+    profile_baseline = (
+        "open_source"
+        if baseline in {"open_source_react", "guided_open_source"}
+        else baseline
+    )
+    profile_key = f"SREZERO_{profile_baseline.upper()}_MODEL"
     return os.environ.get(profile_key) or os.environ.get("OPENAI_MODEL") or "unconfigured"
 
 
@@ -276,9 +300,35 @@ def make_mark_row(result: Mapping[str, Any], *, target_steps: float) -> dict[str
         "score": standard_score.score,
         "components": standard_score.components,
         "metrics": standard_score.metrics,
+        "failure_modes": result.get("failure_modes", {}),
         "agent_error_count": agent_error_count,
         "run_error": result.get("run_error"),
     }
+
+
+def make_difficulty_mark_rows(
+    result: Mapping[str, Any],
+    *,
+    target_steps: float,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    by_difficulty = result.get("by_difficulty")
+    if not isinstance(by_difficulty, Mapping):
+        return rows
+    for difficulty, metrics_value in by_difficulty.items():
+        metrics = as_mapping(metrics_value)
+        standard_score = score_metrics(metrics, target_steps=target_steps)
+        rows.append(
+            {
+                "baseline": result.get("baseline", result.get("agent", "unknown")),
+                "model": result.get("model", "unknown"),
+                "difficulty": difficulty,
+                "score": standard_score.score,
+                "components": standard_score.components,
+                "metrics": standard_score.metrics,
+            }
+        )
+    return rows
 
 
 def as_mapping(value: object) -> Mapping[str, object]:
@@ -302,6 +352,16 @@ def group_marks_by_baseline(rows: list[dict[str, Any]]) -> dict[str, list[dict[s
         grouped.setdefault(baseline, []).append(row)
     for baseline_rows in grouped.values():
         baseline_rows.sort(key=lambda row: row["score"], reverse=True)
+    return grouped
+
+
+def group_marks_by_difficulty(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        difficulty = str(row["difficulty"])
+        grouped.setdefault(difficulty, []).append(row)
+    for difficulty_rows in grouped.values():
+        difficulty_rows.sort(key=lambda row: row["score"], reverse=True)
     return grouped
 
 
@@ -353,6 +413,35 @@ def print_marks(rows: list[dict[str, Any]], output_path: Path) -> None:
     console = Console()
     console.print(table)
     console.print(f"Wrote records and marks to {output_path}")
+
+
+def print_difficulty_marks(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        return
+    table = Table(title="SRE-Zero Marks by Difficulty")
+    table.add_column("Difficulty")
+    table.add_column("Baseline")
+    table.add_column("Model")
+    table.add_column("Marks", justify="right")
+    table.add_column("Success", justify="right")
+    table.add_column("Evidence", justify="right")
+    table.add_column("Root Cause", justify="right")
+    table.add_column("Correct Fix", justify="right")
+
+    for row in rows:
+        metrics = row["metrics"]
+        table.add_row(
+            str(row["difficulty"]),
+            str(row["baseline"]),
+            str(row["model"]),
+            f"{row['score']:.1f}",
+            f"{metrics['success_rate']:.2f}",
+            f"{metrics['evidence_coverage']:.2f}",
+            f"{metrics['root_cause_identification_rate']:.2f}",
+            f"{metrics['correct_remediation_rate']:.2f}",
+        )
+
+    Console().print(table)
 
 
 if __name__ == "__main__":

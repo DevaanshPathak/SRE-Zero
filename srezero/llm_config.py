@@ -26,14 +26,19 @@ class LLMConfig:
     api_key: str = ""
     temperature: float = 0.0
     timeout_seconds: float = 60.0
+    max_tokens: int = 1536
     max_retries: int = 5
     min_request_interval_seconds: float = 15.0
     rate_limit_requests: int = 5
     rate_limit_window_seconds: float = 60.0
     rejection_pause_threshold: int = 3
     rejection_pause_seconds: float = 60.0
+    reasoning_exclude: bool = True
+    qwen_no_think: bool = True
 
     def __post_init__(self) -> None:
+        if self.max_tokens <= 0:
+            raise ValueError("max_tokens must be positive.")
         if self.max_retries < 0:
             raise ValueError("max_retries must be non-negative.")
         if self.min_request_interval_seconds < 0:
@@ -65,6 +70,7 @@ class LLMConfig:
         api_key = _env_first(f"{profile_prefix}_API_KEY", "OPENAI_API_KEY")
         temperature = _float_env("SREZERO_LLM_TEMPERATURE", default=0.0)
         timeout_seconds = _float_env("SREZERO_LLM_TIMEOUT_SECONDS", default=60.0)
+        max_tokens = _int_env("SREZERO_LLM_MAX_TOKENS", default=1536)
         max_retries = _int_env("SREZERO_LLM_MAX_RETRIES", default=5)
         min_request_interval_seconds = _float_env(
             "SREZERO_LLM_MIN_REQUEST_INTERVAL_SECONDS",
@@ -83,6 +89,8 @@ class LLMConfig:
             "SREZERO_LLM_REJECTION_PAUSE_SECONDS",
             default=60.0,
         )
+        reasoning_exclude = _bool_env("SREZERO_LLM_REASONING_EXCLUDE", default=True)
+        qwen_no_think = _bool_env("SREZERO_LLM_QWEN_NO_THINK", default=True)
 
         if not base_url:
             raise ValueError("Missing OPENAI_BASE_URL in environment or .env.")
@@ -99,12 +107,15 @@ class LLMConfig:
             api_key=api_key,
             temperature=temperature,
             timeout_seconds=timeout_seconds,
+            max_tokens=max_tokens,
             max_retries=max_retries,
             min_request_interval_seconds=min_request_interval_seconds,
             rate_limit_requests=rate_limit_requests,
             rate_limit_window_seconds=rate_limit_window_seconds,
             rejection_pause_threshold=rejection_pause_threshold,
             rejection_pause_seconds=rejection_pause_seconds,
+            reasoning_exclude=reasoning_exclude,
+            qwen_no_think=qwen_no_think,
         )
 
 
@@ -118,14 +129,16 @@ class OpenAICompatibleChatClient:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
 
-    def complete(self, messages: list[dict[str, str]], *, max_tokens: int = 256) -> str:
+    def complete(self, messages: list[dict[str, str]], *, max_tokens: int | None = None) -> str:
         endpoint = f"{self.config.base_url.rstrip('/')}/chat/completions"
         payload = {
             "model": self.config.model,
-            "messages": messages,
+            "messages": _prepare_messages(messages, self.config),
             "temperature": self.config.temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": max_tokens or self.config.max_tokens,
         }
+        if self.config.reasoning_exclude and _supports_reasoning_exclusion(self.config):
+            payload["reasoning"] = {"exclude": True}
         headers = {
             "Content-Type": "application/json",
             "User-Agent": "SRE-Zero/0.1",
@@ -180,11 +193,13 @@ class OpenAICompatibleChatClient:
             raise RuntimeError("LLM provider returned invalid JSON.") from exc
 
         try:
-            content = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            message = choice["message"]
+            content = message["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"Unexpected chat completions response: {data}") from exc
         if not isinstance(content, str):
-            raise RuntimeError(f"Unexpected message content type: {type(content).__name__}")
+            raise RuntimeError(_message_content_error(choice, message, content))
         return content.strip()
 
     def _post_json(
@@ -317,6 +332,61 @@ def _short_status(message: str, *, limit: int = 240) -> str:
     return f"{compact[: limit - 3]}..."
 
 
+def _prepare_messages(
+    messages: list[dict[str, str]],
+    config: LLMConfig,
+) -> list[dict[str, str]]:
+    prepared = [dict(message) for message in messages]
+    if config.qwen_no_think and _is_qwen_model(config.model):
+        _append_no_think(prepared)
+    return prepared
+
+
+def _is_qwen_model(model: str) -> bool:
+    return "qwen" in model.lower()
+
+
+def _append_no_think(messages: list[dict[str, str]]) -> None:
+    for message in reversed(messages):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content", "")
+        if "/no_think" not in content:
+            message["content"] = f"{content}\n\n/no_think"
+        return
+
+
+def _supports_reasoning_exclusion(config: LLMConfig) -> bool:
+    base_url = config.base_url.lower()
+    return "openrouter" in base_url or "hackclub" in base_url
+
+
+def _message_content_error(
+    choice: Any,
+    message: Any,
+    content: Any,
+) -> str:
+    finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+    native_finish_reason = (
+        choice.get("native_finish_reason") if isinstance(choice, dict) else None
+    )
+    message_keys = sorted(message.keys()) if isinstance(message, dict) else []
+    has_reasoning = bool(
+        isinstance(message, dict)
+        and (
+            message.get("reasoning")
+            or message.get("reasoning_content")
+            or message.get("reasoning_details")
+        )
+    )
+    return (
+        f"Unexpected message content type: {type(content).__name__}; "
+        f"finish_reason={finish_reason!r}; "
+        f"native_finish_reason={native_finish_reason!r}; "
+        f"message_keys={message_keys}; has_reasoning={has_reasoning}"
+    )
+
+
 def load_env_file(path: Path | None = None) -> dict[str, str]:
     """Load simple KEY=VALUE lines from `.env` without overriding existing env vars."""
 
@@ -379,6 +449,17 @@ def _int_env(key: str, *, default: int) -> int:
         return int(value)
     except ValueError as exc:
         raise ValueError(f"{key} must be an integer, got {value!r}") from exc
+
+
+def _bool_env(key: str, *, default: bool) -> bool:
+    value = os.environ.get(key, "").strip().lower()
+    if not value:
+        return default
+    if value in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"{key} must be a boolean, got {value!r}")
 
 
 def _normalize_base_url(base_url: str) -> str:

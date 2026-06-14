@@ -13,6 +13,61 @@ def normalize_text(value: str) -> str:
     return " ".join(value.lower().replace("_", " ").replace("-", " ").split())
 
 
+def _service_text_matches(service: ServiceName, normalized_text: str) -> bool:
+    service_text = normalize_text(service)
+    aliases = {
+        "web_server": ("web server", "web", "api"),
+        "database": ("database", "db"),
+        "cache": ("cache",),
+        "message_queue": ("message queue", "queue", "mq"),
+        "load_balancer": ("load balancer", "balancer", "lb"),
+    }
+    return service_text in normalized_text or any(
+        alias in normalized_text for alias in aliases.get(service, ())
+    )
+
+
+def _config_key_matches(key: str, normalized_text: str) -> bool:
+    key_text = normalize_text(key)
+    if key_text in normalized_text:
+        return True
+    tokens = [token for token in key_text.split() if token not in {"enabled", "valid"}]
+    if tokens and all(token in normalized_text for token in tokens):
+        return True
+    aliases = {
+        "db pool size": ("connection pool", "pool size", "database pool"),
+        "timeout ms": ("timeout",),
+        "ttl seconds": ("ttl", "time to live"),
+        "memory limit mb": ("memory limit",),
+        "consumer concurrency": ("consumer concurrency", "consumers"),
+        "health check path": ("health check",),
+        "query timeout ms": ("query timeout",),
+        "max connections": ("connection limit", "connections"),
+        "retry limit": ("retry limit", "retries"),
+        "sticky sessions": ("sticky sessions", "session affinity"),
+        "visibility timeout seconds": ("visibility timeout",),
+        "rate limit rps": ("rate limit",),
+        "autovacuum enabled": ("autovacuum",),
+        "compression enabled": ("compression",),
+        "max in flight": ("in flight",),
+        "idle timeout seconds": ("idle timeout",),
+        "cache host": ("cache host",),
+        "read replica enabled": ("read replica", "replica"),
+        "backend weight canary": ("backend weight", "canary weight"),
+        "auth token valid": ("auth token", "token"),
+        "index enabled": ("index",),
+    }
+    return any(alias in normalized_text for alias in aliases.get(key_text, ()))
+
+
+def _boolean_value_matches(value: ConfigValue, normalized_text: str) -> bool:
+    if value is True:
+        return any(term in normalized_text for term in ("enable", "enabled", "true", "valid"))
+    if value is False:
+        return any(term in normalized_text for term in ("disable", "disabled", "false"))
+    return False
+
+
 @dataclass(frozen=True)
 class CorrectFix:
     """Task-level remediation validator."""
@@ -46,7 +101,24 @@ class CorrectFix:
         normalized = normalize_text(text)
         if not self.fix_keywords:
             return True
-        return all(normalize_text(keyword) in normalized for keyword in self.fix_keywords)
+        if all(normalize_text(keyword) in normalized for keyword in self.fix_keywords):
+            return True
+        return self._matches_canonical_fix_text(normalized)
+
+    def _matches_canonical_fix_text(self, normalized_text: str) -> bool:
+        service_matches = _service_text_matches(self.service, normalized_text)
+        if self.action_type == "restart_service":
+            restart_terms = ("restart", "restarted", "reboot", "recover", "bring back")
+            return service_matches and any(term in normalized_text for term in restart_terms)
+        if self.action_type != "update_config":
+            return False
+        key_matches = self.key is not None and _config_key_matches(self.key, normalized_text)
+        value_matches = (
+            self.exact_value is None
+            or normalize_text(str(self.exact_value)) in normalized_text
+            or _boolean_value_matches(self.exact_value, normalized_text)
+        )
+        return service_matches and key_matches and value_matches
 
 
 @dataclass

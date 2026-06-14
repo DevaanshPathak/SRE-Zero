@@ -12,8 +12,36 @@ SRE-Zero reports:
 - `wrong_remediation_rate`: wrong remediation actions divided by remediation actions.
 - `distractor_failure_rate`: wrong remediations against configured distractor services divided by remediation actions.
 - `premature_resolution_rate`: fraction of episodes with premature or incorrect resolution submissions.
+- `root_cause_identification_rate`: fraction of episodes where a submitted resolution matched the hidden root cause, even if the incident was not fully resolved.
+- `fix_identification_rate`: fraction of episodes where the submitted resolution described an acceptable fix.
+- `correct_service_remediation_rate`: fraction of episodes where the agent attempted remediation on the correct service.
+- `correct_remediation_rate`: fraction of episodes where the simulator accepted a remediation as the correct fix.
+- `remediation_precision`: correct remediation actions divided by all remediation actions.
 
 These metrics separate diagnosis quality, tool reliability, remediation quality, and efficiency.
+They are intentionally reported alongside success rate because early agents often gather
+evidence or identify the right subsystem without completing the full incident workflow.
+
+## Difficulty Splits
+
+Evaluation JSON includes `by_difficulty` aggregates for `easy`, `medium`, and `hard`
+tasks. Combined summaries also include `difficulty_marks.rows`, which can be used
+directly for paper and blog tables. This lets reports show easy-only smoke behavior
+without hiding the all-task benchmark result.
+
+## Failure Modes
+
+Each run includes a compact `failure_modes` object with counts for:
+
+- successful episodes
+- agent/provider errors
+- wrong remediation
+- premature resolution
+- step-budget exhaustion
+- invalid-action failures
+- other unresolved failures
+
+These counts are meant for failure-analysis tables, not for ranking models directly.
 
 ## Standardized Scoring
 

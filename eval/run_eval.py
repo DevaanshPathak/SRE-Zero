@@ -20,7 +20,12 @@ from baselines import AGENT_CHOICES, Agent, build_agent  # noqa: E402
 from srezero.env import SREEnv  # noqa: E402
 from srezero.metrics import aggregate_episode_records  # noqa: E402
 from srezero.scoring import score_metrics  # noqa: E402
-from srezero.task_registry import BenchmarkSplit, Difficulty, list_task_ids  # noqa: E402
+from srezero.task_registry import (  # noqa: E402
+    BenchmarkSplit,
+    Difficulty,
+    difficulty_splits,
+    list_task_ids,
+)
 
 ProgressCallback = Callable[[str, int, int, int, int, str], None]
 
@@ -56,6 +61,12 @@ def run_episode(task_id: str, agent: Agent, seed: int) -> dict[str, object]:
         "seed": seed,
         "metrics": env.metrics.model_dump(),
         "evidence_coverage": final_info.get("evidence_coverage", 0.0),
+        "terminal_reason": final_info.get("terminal_reason"),
+        "final_reward": env.metrics.final_reward,
+        "root_cause_identified": env.metrics.root_cause_identified,
+        "fix_identified": env.metrics.fix_identified,
+        "correct_service_remediation": env.metrics.correct_service_remediations > 0,
+        "correct_remediation": env.metrics.correct_remediations > 0,
         "trajectory": trajectory,
     }
     if agent_error is not None:
@@ -91,11 +102,13 @@ def evaluate(
         task_ids=task_ids_override,
         task_range=None,
     )
+    all_task_ids = list_task_ids(difficulty=difficulty, split=split)
+    task_seed_indexes = {task_id: index for index, task_id in enumerate(all_task_ids)}
     paused = False
 
     for task_index, task_id in enumerate(task_ids):
         for episode_index in range(episodes):
-            episode_seed = seed + task_index * 10_000 + episode_index
+            episode_seed = seed + task_seed_indexes[task_id] * 10_000 + episode_index
             episode_key = (task_id, episode_seed)
             if episode_key in completed:
                 if progress_callback is not None:
@@ -219,6 +232,18 @@ def _evaluation_result(
         if task_records:
             by_task[task_id] = aggregate_episode_records(cast(list[dict[str, Any]], task_records))
 
+    by_difficulty: dict[str, dict[str, float]] = {}
+    for difficulty_name, difficulty_task_ids in difficulty_splits().items():
+        allowed = set(difficulty_task_ids)
+        difficulty_records = [
+            record for record in records if isinstance(record.get("task_id"), str)
+            and record["task_id"] in allowed
+        ]
+        if difficulty_records:
+            by_difficulty[difficulty_name] = aggregate_episode_records(
+                cast(list[dict[str, Any]], difficulty_records)
+            )
+
     overall = aggregate_episode_records(cast(list[dict[str, Any]], records))
     filtered_task_ids = task_ids if selected_task_ids is not None else None
     expected_task_episodes = len(all_task_ids) * episodes
@@ -232,7 +257,9 @@ def _evaluation_result(
         "split": split,
         "overall": overall,
         "standard_score": score_metrics(overall).model_dump(),
+        "failure_modes": aggregate_failure_modes(records),
         "by_task": by_task,
+        "by_difficulty": by_difficulty,
         "records": records,
         "task_ids": all_task_ids,
         "filtered_task_ids": filtered_task_ids,
@@ -246,6 +273,40 @@ def _evaluation_result(
     if checkpoint_extra:
         result.update(checkpoint_extra)
     return result
+
+
+def aggregate_failure_modes(records: list[dict[str, object]]) -> dict[str, int]:
+    modes = {
+        "total": len(records),
+        "success": 0,
+        "agent_error": 0,
+        "wrong_remediation": 0,
+        "premature_resolution": 0,
+        "step_budget_exhausted": 0,
+        "invalid_action": 0,
+        "other_failure": 0,
+    }
+    for record in records:
+        metrics = record.get("metrics")
+        if not isinstance(metrics, dict):
+            modes["other_failure"] += 1
+            continue
+        if metrics.get("success"):
+            modes["success"] += 1
+            continue
+        if record.get("agent_error"):
+            modes["agent_error"] += 1
+        elif metrics.get("wrong_remediations", 0) > 0:
+            modes["wrong_remediation"] += 1
+        elif metrics.get("premature_resolutions", 0) > 0:
+            modes["premature_resolution"] += 1
+        elif record.get("terminal_reason") == "step_budget_exhausted":
+            modes["step_budget_exhausted"] += 1
+        elif metrics.get("invalid_actions", 0) > 0:
+            modes["invalid_action"] += 1
+        else:
+            modes["other_failure"] += 1
+    return modes
 
 
 def resolve_task_ids(
@@ -333,6 +394,29 @@ def print_results(results: dict[str, object]) -> None:
         f"{overall['evidence_coverage']:.2f}",
     )
     console.print(table)
+
+    by_difficulty = results.get("by_difficulty")
+    if isinstance(by_difficulty, dict) and by_difficulty:
+        difficulty_table = Table(title="SRE-Zero Metrics by Difficulty")
+        difficulty_table.add_column("Difficulty")
+        difficulty_table.add_column("Success", justify="right")
+        difficulty_table.add_column("Reward", justify="right")
+        difficulty_table.add_column("Evidence", justify="right")
+        difficulty_table.add_column("Root Cause", justify="right")
+        difficulty_table.add_column("Correct Fix", justify="right")
+        for difficulty_name in ("easy", "medium", "hard"):
+            metrics = by_difficulty.get(difficulty_name)
+            if not isinstance(metrics, dict):
+                continue
+            difficulty_table.add_row(
+                difficulty_name,
+                f"{metrics['success_rate']:.2f}",
+                f"{metrics['mean_reward']:.3f}",
+                f"{metrics['evidence_coverage']:.2f}",
+                f"{metrics['root_cause_identification_rate']:.2f}",
+                f"{metrics['correct_remediation_rate']:.2f}",
+            )
+        console.print(difficulty_table)
 
 
 def main() -> None:

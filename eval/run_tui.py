@@ -31,12 +31,18 @@ for import_path in (ROOT, EVAL_DIR):
 
 from run_all_eval import (  # noqa: E402
     BASELINE_CHOICES,
+    EASY_SPLIT_BLOG_OPEN_WEIGHT_MODELS,
+    OPEN_WEIGHT_FALLBACK_MODELS,
     PAPER_FRONTIER_MODELS,
+    PAPER_GUIDED_OPEN_SOURCE_MODELS,
     PAPER_OPEN_SOURCE_MODELS,
+    PAPER_OPEN_SOURCE_REACT_MODELS,
     PAPER_PROMPTING_MODELS,
     PAPER_REACT_MODELS,
     group_marks_by_baseline,
+    group_marks_by_difficulty,
     group_marks_by_model,
+    make_difficulty_mark_rows,
     make_mark_row,
     pairwise_deltas_by_baseline,
     safe_slug,
@@ -48,19 +54,35 @@ from srezero.task_registry import Difficulty, list_task_ids  # noqa: E402
 console = Console()
 STALE_PROCESS_SECONDS = 300.0
 
-LLM_BASELINES = {"prompting", "react", "open_source", "frontier"}
+LLM_BASELINES = {
+    "prompting",
+    "react",
+    "open_source",
+    "open_source_react",
+    "guided_open_source",
+    "frontier",
+}
 DETERMINISTIC_BASELINES = {"random", "scripted"}
 MODEL_ARG_BY_BASELINE = {
     "prompting": "--prompting-models",
     "react": "--react-models",
     "open_source": "--open-source-models",
+    "open_source_react": "--open-source-react-models",
+    "guided_open_source": "--guided-open-source-models",
     "frontier": "--frontier-models",
 }
 DEFAULT_MODELS = {
     "prompting": list(PAPER_PROMPTING_MODELS),
     "react": list(PAPER_REACT_MODELS),
     "open_source": list(PAPER_OPEN_SOURCE_MODELS),
+    "open_source_react": list(PAPER_OPEN_SOURCE_REACT_MODELS),
+    "guided_open_source": list(PAPER_GUIDED_OPEN_SOURCE_MODELS),
     "frontier": list(PAPER_FRONTIER_MODELS),
+}
+EXTRA_MODEL_CANDIDATES = {
+    "open_source": list(EASY_SPLIT_BLOG_OPEN_WEIGHT_MODELS + OPEN_WEIGHT_FALLBACK_MODELS),
+    "open_source_react": list(EASY_SPLIT_BLOG_OPEN_WEIGHT_MODELS + OPEN_WEIGHT_FALLBACK_MODELS),
+    "guided_open_source": list(EASY_SPLIT_BLOG_OPEN_WEIGHT_MODELS + OPEN_WEIGHT_FALLBACK_MODELS),
 }
 MODEL_SLUG_RE = re.compile(r"^~?[a-z0-9][a-z0-9_.-]*/[a-z0-9][a-z0-9_.:-]*$", re.I)
 RunStatus = Literal["pending", "partial", "paused", "complete", "error", "running"]
@@ -130,12 +152,15 @@ class ManagedRunConfig:
     llm_episodes: int
     target_steps: float
     timeout_seconds: float
+    llm_max_tokens: int
     llm_max_retries: int
     llm_min_request_interval_seconds: float
     llm_rate_limit_requests: int
     llm_rate_limit_window_seconds: float
     llm_rejection_pause_threshold: int
     llm_rejection_pause_seconds: float
+    llm_reasoning_exclude: bool
+    llm_qwen_no_think: bool
     targets: list[RunTarget]
 
     def to_json(self) -> dict[str, object]:
@@ -149,12 +174,15 @@ class ManagedRunConfig:
             "llm_episodes": self.llm_episodes,
             "target_steps": self.target_steps,
             "timeout_seconds": self.timeout_seconds,
+            "llm_max_tokens": self.llm_max_tokens,
             "llm_max_retries": self.llm_max_retries,
             "llm_min_request_interval_seconds": self.llm_min_request_interval_seconds,
             "llm_rate_limit_requests": self.llm_rate_limit_requests,
             "llm_rate_limit_window_seconds": self.llm_rate_limit_window_seconds,
             "llm_rejection_pause_threshold": self.llm_rejection_pause_threshold,
             "llm_rejection_pause_seconds": self.llm_rejection_pause_seconds,
+            "llm_reasoning_exclude": self.llm_reasoning_exclude,
+            "llm_qwen_no_think": self.llm_qwen_no_think,
             "targets": [target.to_json() for target in self.targets],
         }
 
@@ -173,6 +201,7 @@ class ManagedRunConfig:
             llm_episodes=required_int(data, "llm_episodes"),
             target_steps=required_float(data, "target_steps"),
             timeout_seconds=required_float(data, "timeout_seconds"),
+            llm_max_tokens=int_or_default(data, "llm_max_tokens", 1536),
             llm_max_retries=required_int(data, "llm_max_retries"),
             llm_min_request_interval_seconds=required_float(
                 data, "llm_min_request_interval_seconds"
@@ -185,6 +214,12 @@ class ManagedRunConfig:
                 data, "llm_rejection_pause_threshold"
             ),
             llm_rejection_pause_seconds=required_float(data, "llm_rejection_pause_seconds"),
+            llm_reasoning_exclude=bool_or_default(
+                data,
+                "llm_reasoning_exclude",
+                True,
+            ),
+            llm_qwen_no_think=bool_or_default(data, "llm_qwen_no_think", True),
             targets=targets,
         )
 
@@ -301,7 +336,7 @@ def create_run() -> None:
     deterministic_episodes = IntPrompt.ask("Deterministic episodes per task", default=5)
     llm_episodes = IntPrompt.ask("LLM episodes per task", default=1)
     target_steps = float(Prompt.ask("Target steps for marks", default="8"))
-    baseline_defaults = "random,scripted,open_source"
+    baseline_defaults = "random,scripted,open_source,open_source_react,guided_open_source"
     baselines = choose_baselines(baseline_defaults)
     targets = choose_targets(baselines)
     if not targets:
@@ -317,6 +352,7 @@ def create_run() -> None:
         llm_episodes=llm_episodes,
         target_steps=target_steps,
         timeout_seconds=float(Prompt.ask("LLM timeout seconds", default="30")),
+        llm_max_tokens=IntPrompt.ask("LLM max output tokens", default=1536),
         llm_max_retries=IntPrompt.ask("LLM max retries", default=5),
         llm_min_request_interval_seconds=float(
             Prompt.ask("Seconds between LLM requests", default="15")
@@ -332,6 +368,11 @@ def create_run() -> None:
         llm_rejection_pause_seconds=float(
             Prompt.ask("Cooldown seconds after rejection threshold", default="60")
         ),
+        llm_reasoning_exclude=Confirm.ask(
+            "Exclude reasoning payloads for Hack Club/OpenRouter",
+            default=True,
+        ),
+        llm_qwen_no_think=Confirm.ask("Append /no_think for Qwen models", default=True),
         targets=targets,
     )
     managed = ManagedRun(config=config, run_dir=managed_root() / run_id)
@@ -380,7 +421,10 @@ def choose_models_for_baseline_keyboard(
     available_models: list[str],
 ) -> list[str]:
     defaults = DEFAULT_MODELS.get(baseline, [])
-    candidates = model_checklist_candidates(defaults, available_models)
+    candidates = model_checklist_candidates(
+        [*defaults, *EXTRA_MODEL_CANDIDATES.get(baseline, [])],
+        available_models,
+    )
     selected = set(defaults)
     filter_text = ""
     page = 0
@@ -500,7 +544,10 @@ def choose_models_for_baseline_prompt(
     available_models: list[str],
 ) -> list[str]:
     defaults = DEFAULT_MODELS.get(baseline, [])
-    candidates = model_checklist_candidates(defaults, available_models)
+    candidates = model_checklist_candidates(
+        [*defaults, *EXTRA_MODEL_CANDIDATES.get(baseline, [])],
+        available_models,
+    )
     selected = set(defaults)
     filter_text = ""
     page = 0
@@ -928,7 +975,7 @@ def open_run(managed: ManagedRun) -> None:
                 "4. Run one selected target\n"
                 "5. Rerun one selected target from scratch\n"
                 "6. Run selected target over task range\n"
-                "7. Rerun errored tasks for one target\n"
+                "7. Rerun errored/missing tasks for one target\n"
                 "8. Add targets/models\n"
                 "9. Remove targets from run\n"
                 "10. Pause after current task/episode\n"
@@ -1511,7 +1558,7 @@ def move_queued_target(managed: ManagedRun) -> None:
 
 
 def add_targets_to_run(managed: ManagedRun) -> ManagedRun:
-    baselines = choose_baselines("open_source")
+    baselines = choose_baselines("open_source,open_source_react,guided_open_source")
     new_targets = choose_targets(baselines)
     if not new_targets:
         console.print("[yellow]No targets selected.[/yellow]")
@@ -1639,15 +1686,15 @@ def rerun_errored_tasks(managed: ManagedRun) -> None:
     if result is None:
         console.print("[yellow]No result file exists for that target yet.[/yellow]")
         return
-    task_ids = errored_task_ids(result)
+    task_ids = repair_task_ids(managed, target, result)
     if not task_ids:
-        console.print("[green]No task-level agent errors found for that target.[/green]")
+        console.print("[green]No errored or missing task records found for that target.[/green]")
         return
-    console.print(Panel(describe_task_selection(task_ids), title="Errored Tasks"))
-    if not Confirm.ask(f"Rerun {len(task_ids)} errored task(s)?", default=True):
+    console.print(Panel(describe_task_selection(task_ids), title="Errored/Missing Tasks"))
+    if not Confirm.ask(f"Rerun {len(task_ids)} errored/missing task(s)?", default=True):
         return
     removed = rewrite_result_without_task_ids(managed.target_output_path(target), set(task_ids))
-    console.print(f"[yellow]Removed {removed} errored record(s) before rerun.[/yellow]")
+    console.print(f"[yellow]Removed {removed} existing record(s) before repair rerun.[/yellow]")
     launch_target(managed, target, task_ids=task_ids)
 
 
@@ -1663,6 +1710,83 @@ def errored_task_ids(result: dict[str, Any]) -> list[str]:
         if isinstance(task_id, str) and record.get("agent_error") and task_id not in task_ids:
             task_ids.append(task_id)
     return task_ids
+
+
+def repair_task_ids(
+    managed: ManagedRun,
+    target: RunTarget,
+    result: dict[str, Any],
+) -> list[str]:
+    task_ids = expected_task_ids_for_result(managed, result)
+    episodes = (
+        managed.config.deterministic_episodes
+        if target.baseline in DETERMINISTIC_BASELINES
+        else managed.config.llm_episodes
+    )
+    expected_keys = expected_episode_keys_for_tasks(
+        seed=managed.config.seed,
+        episodes=episodes,
+        difficulty=managed.config.difficulty,
+        task_ids=task_ids,
+    )
+    completed_keys = completed_episode_keys(result)
+    errored = set(errored_task_ids(result))
+    missing = {
+        task_id
+        for task_id in task_ids
+        if any(
+            (task_id, expected_seed) not in completed_keys
+            for expected_seed in expected_keys[task_id]
+        )
+    }
+    needs_repair = errored | missing
+    return [task_id for task_id in task_ids if task_id in needs_repair]
+
+
+def expected_task_ids_for_result(
+    managed: ManagedRun,
+    result: dict[str, Any],
+) -> list[str]:
+    filtered = result.get("filtered_task_ids")
+    if isinstance(filtered, list) and all(isinstance(task_id, str) for task_id in filtered):
+        return list(cast(list[str], filtered))
+    task_ids = result.get("task_ids")
+    if isinstance(task_ids, list) and all(isinstance(task_id, str) for task_id in task_ids):
+        return list(cast(list[str], task_ids))
+    return list_task_ids(difficulty=cast(Difficulty | None, managed.config.difficulty))
+
+
+def completed_episode_keys(result: dict[str, Any]) -> set[tuple[str, int]]:
+    records = result.get("records")
+    if not isinstance(records, list):
+        return set()
+    completed: set[tuple[str, int]] = set()
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        task_id = record.get("task_id")
+        seed = record.get("seed")
+        if isinstance(task_id, str) and isinstance(seed, int):
+            completed.add((task_id, seed))
+    return completed
+
+
+def expected_episode_keys_for_tasks(
+    *,
+    seed: int,
+    episodes: int,
+    difficulty: str | None,
+    task_ids: list[str],
+) -> dict[str, set[int]]:
+    all_task_ids = list_task_ids(difficulty=cast(Difficulty | None, difficulty))
+    task_seed_indexes = {task_id: index for index, task_id in enumerate(all_task_ids)}
+    return {
+        task_id: {
+            seed + task_seed_indexes[task_id] * 10_000 + episode_index
+            for episode_index in range(episodes)
+        }
+        for task_id in task_ids
+    }
 
 
 def rewrite_result_without_task_ids(path: Path, task_ids: set[str]) -> int:
@@ -1888,6 +2012,8 @@ def build_target_command(
             str(config.llm_episodes),
             "--timeout-seconds",
             str(config.timeout_seconds),
+            "--llm-max-tokens",
+            str(config.llm_max_tokens),
             "--llm-max-retries",
             str(config.llm_max_retries),
             "--llm-min-request-interval-seconds",
@@ -1900,6 +2026,10 @@ def build_target_command(
             str(config.llm_rejection_pause_threshold),
             "--llm-rejection-pause-seconds",
             str(config.llm_rejection_pause_seconds),
+            "--llm-reasoning-exclude"
+            if config.llm_reasoning_exclude
+            else "--no-llm-reasoning-exclude",
+            "--llm-qwen-no-think" if config.llm_qwen_no_think else "--no-llm-qwen-no-think",
             MODEL_ARG_BY_BASELINE[target.baseline],
             target.model,
         ]
@@ -2083,6 +2213,7 @@ def expected_records(managed: ManagedRun, target: RunTarget) -> int:
 def rebuild_summary(managed: ManagedRun) -> None:
     runs: list[dict[str, Any]] = []
     mark_rows: list[dict[str, Any]] = []
+    difficulty_mark_rows: list[dict[str, Any]] = []
     run_files: list[dict[str, str]] = []
     for target in managed.config.targets:
         path = managed.target_output_path(target)
@@ -2091,8 +2222,14 @@ def rebuild_summary(managed: ManagedRun) -> None:
             continue
         runs.append(result)
         mark_rows.append(make_mark_row(result, target_steps=managed.config.target_steps))
+        difficulty_mark_rows.extend(
+            make_difficulty_mark_rows(result, target_steps=managed.config.target_steps)
+        )
         run_files.append({"baseline": target.baseline, "model": target.label, "path": str(path)})
     mark_rows.sort(key=lambda row: row["score"], reverse=True)
+    difficulty_mark_rows.sort(
+        key=lambda row: (str(row["difficulty"]), -float(row["score"]))
+    )
     summary = {
         "schema_version": 1,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -2104,6 +2241,10 @@ def rebuild_summary(managed: ManagedRun) -> None:
             "by_model": group_marks_by_model(mark_rows),
             "by_baseline": group_marks_by_baseline(mark_rows),
             "pairwise_deltas": pairwise_deltas_by_baseline(mark_rows),
+        },
+        "difficulty_marks": {
+            "rows": difficulty_mark_rows,
+            "by_difficulty": group_marks_by_difficulty(difficulty_mark_rows),
         },
         "run_files": run_files,
         "runs": runs,
@@ -2511,6 +2652,24 @@ def required_float(data: dict[str, object], key: str) -> float:
     if isinstance(value, int | float):
         return float(value)
     raise ValueError(f"{key} must be a number")
+
+
+def int_or_default(data: dict[str, object], key: str, default: int) -> int:
+    value = data.get(key)
+    if value is None:
+        return default
+    if isinstance(value, int):
+        return value
+    raise ValueError(f"{key} must be an integer")
+
+
+def bool_or_default(data: dict[str, object], key: str, default: bool) -> bool:
+    value = data.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"{key} must be a boolean")
 
 
 if __name__ == "__main__":

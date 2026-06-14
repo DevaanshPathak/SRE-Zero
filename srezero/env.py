@@ -290,12 +290,16 @@ class SREEnv:
 
     def _restart_service(self, action: Action) -> ActionResult:
         self.metrics.remediation_actions += 1
+        if action.service == self._task.correct_fix.service:
+            self.metrics.correct_service_remediations += 1
         service = self._service(action.service)
         service.status = "healthy"
         service.logs.append("INFO service restarted by incident responder")
 
         if self._task.remediation_matches(action):
             self._correct_remediation_applied = True
+            self.metrics.correct_remediations += 1
+            self.metrics.correct_remediation_applied = True
             self.reward_tracker.mark_remediation()
             return ActionResult(
                 summary=f"Restarted {service.name}.",
@@ -318,6 +322,8 @@ class SREEnv:
 
     def _update_config(self, action: Action) -> ActionResult:
         self.metrics.remediation_actions += 1
+        if action.service == self._task.correct_fix.service:
+            self.metrics.correct_service_remediations += 1
         service = self._service(action.service)
         previous = service.config.get(action.key or "")
         if action.key is not None and action.value is not None:
@@ -325,6 +331,8 @@ class SREEnv:
 
         if self._task.remediation_matches(action):
             self._correct_remediation_applied = True
+            self.metrics.correct_remediations += 1
+            self.metrics.correct_remediation_applied = True
             self.reward_tracker.mark_remediation()
             return ActionResult(
                 summary=f"Updated {service.name} config {action.key}.",
@@ -356,7 +364,10 @@ class SREEnv:
         fix_ok = self._task.fix_text_matches(action.fix or "")
 
         if root_ok:
+            self.metrics.root_cause_identified = True
             self.reward_tracker.mark_root_cause()
+        if fix_ok:
+            self.metrics.fix_identified = True
 
         if root_ok and fix_ok and self._correct_remediation_applied:
             self.reward_tracker.mark_resolution()

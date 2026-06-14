@@ -33,6 +33,7 @@ from run_tui import (  # noqa: E402
     powershell_command,
     queue_status_text,
     queue_targets,
+    repair_task_ids,
     rewrite_result_without_task_ids,
     safe_target_key,
     save_queue,
@@ -56,6 +57,10 @@ def test_build_target_command_for_one_open_source_model(tmp_path) -> None:
     assert "--resume" in command
     assert "--pause-file" in command
     assert "--skip-deterministic" in command
+    assert "--llm-max-tokens" in command
+    assert "1536" in command
+    assert "--llm-reasoning-exclude" in command
+    assert "--llm-qwen-no-think" in command
     assert "--open-source-models" in command
     assert "openai/gpt-oss-20b:free" in command
     assert "--llm-rejection-pause-threshold" in command
@@ -90,6 +95,25 @@ def test_model_checklist_candidates_put_defaults_first() -> None:
         "qwen/qwen3.6-35b-a3b",
         "google/gemma-4-26b-a4b-it:free",
     ]
+
+
+def test_open_source_tui_candidate_catalog_includes_blog_queue_and_fallbacks() -> None:
+    candidates = model_checklist_candidates(
+        [
+            *run_tui.DEFAULT_MODELS["open_source"],
+            *run_tui.EXTRA_MODEL_CANDIDATES["open_source"],
+        ],
+        [],
+    )
+
+    for model in [
+        "mistralai/mistral-small-3.2-24b-instruct",
+        "openai/gpt-oss-20b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "poolside/laguna-xs.2:free",
+        "openai/gpt-oss-120b:free",
+    ]:
+        assert model in candidates
 
 
 def test_parse_checklist_indexes_supports_ranges_and_dedupes() -> None:
@@ -259,6 +283,34 @@ def test_errored_task_ids_returns_unique_agent_error_tasks() -> None:
     assert errored_task_ids(result) == ["a", "c"]
 
 
+def test_repair_task_ids_includes_missing_and_agent_error_tasks(tmp_path) -> None:
+    target = RunTarget("open_source", "ibm-granite/granite-4.1-8b")
+    managed = sample_run(tmp_path, [target])
+    easy_tasks = run_tui.list_task_ids(difficulty="easy")
+    result = {
+        "task_ids": easy_tasks,
+        "records": [
+            {"task_id": easy_tasks[0], "seed": 0},
+            {"task_id": easy_tasks[1], "seed": 10_000, "agent_error": "Timeout"},
+        ],
+    }
+
+    assert repair_task_ids(managed, target, result) == easy_tasks[1:]
+
+
+def test_repair_task_ids_uses_filtered_task_ids(tmp_path) -> None:
+    target = RunTarget("open_source", "ibm-granite/granite-4.1-8b")
+    managed = sample_run(tmp_path, [target])
+    easy_tasks = run_tui.list_task_ids(difficulty="easy")
+    result = {
+        "filtered_task_ids": easy_tasks[2:4],
+        "task_ids": easy_tasks,
+        "records": [{"task_id": easy_tasks[2], "seed": 20_000}],
+    }
+
+    assert repair_task_ids(managed, target, result) == [easy_tasks[3]]
+
+
 def test_rewrite_result_without_task_ids_removes_matching_records(tmp_path) -> None:
     path = tmp_path / "result.json"
     path.write_text(
@@ -350,12 +402,15 @@ def sample_run(tmp_path: Path, targets: list[RunTarget]) -> ManagedRun:
             llm_episodes=1,
             target_steps=8.0,
             timeout_seconds=30.0,
+            llm_max_tokens=1536,
             llm_max_retries=5,
             llm_min_request_interval_seconds=15.0,
             llm_rate_limit_requests=5,
             llm_rate_limit_window_seconds=60.0,
             llm_rejection_pause_threshold=3,
             llm_rejection_pause_seconds=60.0,
+            llm_reasoning_exclude=True,
+            llm_qwen_no_think=True,
             targets=targets,
         ),
     )

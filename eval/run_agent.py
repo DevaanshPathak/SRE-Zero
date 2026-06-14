@@ -19,7 +19,14 @@ if str(ROOT) not in sys.path:
 from baselines import AGENT_CHOICES, build_agent  # noqa: E402
 from srezero.env import SREEnv  # noqa: E402
 
-LLM_BASELINES = {"prompting", "react", "open_source", "frontier"}
+LLM_BASELINES = {
+    "prompting",
+    "react",
+    "open_source",
+    "open_source_react",
+    "guided_open_source",
+    "frontier",
+}
 
 
 def main() -> None:

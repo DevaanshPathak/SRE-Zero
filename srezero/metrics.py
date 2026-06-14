@@ -14,9 +14,14 @@ class EpisodeMetrics(BaseModel):
     repeated_actions: int = 0
     evidence_actions: int = 0
     remediation_actions: int = 0
+    correct_service_remediations: int = 0
+    correct_remediations: int = 0
     wrong_remediations: int = 0
     distractor_failures: int = 0
     premature_resolutions: int = 0
+    root_cause_identified: bool = False
+    fix_identified: bool = False
+    correct_remediation_applied: bool = False
     success: bool = False
     final_reward: float = 0.0
 
@@ -34,11 +39,19 @@ def aggregate_episode_records(records: list[dict[str, Any]]) -> dict[str, float]
             "wrong_remediation_rate": 0.0,
             "distractor_failure_rate": 0.0,
             "premature_resolution_rate": 0.0,
+            "root_cause_identification_rate": 0.0,
+            "fix_identification_rate": 0.0,
+            "correct_service_remediation_rate": 0.0,
+            "correct_remediation_rate": 0.0,
+            "remediation_precision": 0.0,
         }
 
     total_steps = sum(record["metrics"]["total_steps"] for record in records)
     total_invalid = sum(record["metrics"]["invalid_actions"] for record in records)
     total_remediations = sum(record["metrics"]["remediation_actions"] for record in records)
+    total_correct_remediations = sum(
+        record["metrics"].get("correct_remediations", 0) for record in records
+    )
     total_wrong_remediations = sum(record["metrics"]["wrong_remediations"] for record in records)
     total_distractor_failures = sum(
         record["metrics"].get("distractor_failures", 0) for record in records
@@ -56,4 +69,21 @@ def aggregate_episode_records(records: list[dict[str, Any]]) -> dict[str, float]
             1.0 if record["metrics"]["premature_resolutions"] > 0 else 0.0
             for record in records
         ),
+        "root_cause_identification_rate": mean(
+            1.0 if record["metrics"].get("root_cause_identified", False) else 0.0
+            for record in records
+        ),
+        "fix_identification_rate": mean(
+            1.0 if record["metrics"].get("fix_identified", False) else 0.0
+            for record in records
+        ),
+        "correct_service_remediation_rate": mean(
+            1.0 if record["metrics"].get("correct_service_remediations", 0) > 0 else 0.0
+            for record in records
+        ),
+        "correct_remediation_rate": mean(
+            1.0 if record["metrics"].get("correct_remediations", 0) > 0 else 0.0
+            for record in records
+        ),
+        "remediation_precision": total_correct_remediations / max(1, total_remediations),
     }

@@ -7,6 +7,8 @@ This is the one-command runner for local experiment sweeps. It runs:
 - prompting baseline over selected models
 - ReAct baseline over selected models
 - open-source LLM baseline over selected models
+- open-source ReAct baseline over selected models
+- guided open-source LLM baseline over selected models
 - frontier model baseline over selected models
 
 Each run is written to its own JSON file, and a combined marks JSON is written
@@ -46,9 +48,12 @@ for import_path in (ROOT, EVAL_DIR):
 from run_baseline_marks import (  # noqa: E402
     MARK_WEIGHTS,
     group_marks_by_baseline,
+    group_marks_by_difficulty,
     group_marks_by_model,
+    make_difficulty_mark_rows,
     make_mark_row,
     pairwise_deltas_by_baseline,
+    print_difficulty_marks,
     print_marks,
     run_one,
 )
@@ -62,6 +67,8 @@ QUICK_OPEN_SOURCE_MODELS = (
     "ibm-granite/granite-4.1-8b",
     "inclusionai/ring-2.6-1t:free",
 )
+QUICK_OPEN_SOURCE_REACT_MODELS = QUICK_OPEN_SOURCE_MODELS
+QUICK_GUIDED_OPEN_SOURCE_MODELS = QUICK_OPEN_SOURCE_MODELS
 QUICK_FRONTIER_MODELS = (
     "openai/gpt-5.5",
     "anthropic/claude-opus-4.7-fast",
@@ -87,6 +94,25 @@ PAPER_OPEN_SOURCE_MODELS = (
     "nvidia/nemotron-3-super-120b-a12b:free",
     "google/gemma-4-26b-a4b-it:free",
 )
+PAPER_OPEN_SOURCE_REACT_MODELS = PAPER_OPEN_SOURCE_MODELS
+PAPER_GUIDED_OPEN_SOURCE_MODELS = PAPER_OPEN_SOURCE_MODELS
+EASY_SPLIT_BLOG_OPEN_WEIGHT_MODELS = (
+    "qwen/qwen3.6-35b-a3b",
+    "mistralai/mistral-small-3.2-24b-instruct",
+    "openai/gpt-oss-20b:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "ibm-granite/granite-4.1-8b",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "inclusionai/ring-2.6-1t:free",
+)
+OPEN_WEIGHT_FALLBACK_MODELS = (
+    "poolside/laguna-xs.2:free",
+    "poolside/laguna-m.1:free",
+    "qwen/qwen3.6-27b",
+    "google/gemma-4-31b-it:free",
+    "openai/gpt-oss-120b:free",
+)
 PAPER_FRONTIER_MODELS = (
     "openai/gpt-5.5",
     "anthropic/claude-opus-4.7-fast",
@@ -94,7 +120,16 @@ PAPER_FRONTIER_MODELS = (
     "x-ai/grok-4.3",
     "mistralai/mistral-medium-3-5",
 )
-BASELINE_CHOICES = ("random", "scripted", "prompting", "react", "open_source", "frontier")
+BASELINE_CHOICES = (
+    "random",
+    "scripted",
+    "prompting",
+    "react",
+    "open_source",
+    "open_source_react",
+    "guided_open_source",
+    "frontier",
+)
 
 
 def main() -> None:
@@ -102,6 +137,8 @@ def main() -> None:
     normalize_paths(args)
     if args.timeout_seconds is not None:
         os.environ["SREZERO_LLM_TIMEOUT_SECONDS"] = str(args.timeout_seconds)
+    if args.llm_max_tokens is not None:
+        os.environ["SREZERO_LLM_MAX_TOKENS"] = str(args.llm_max_tokens)
     if args.llm_max_retries is not None:
         os.environ["SREZERO_LLM_MAX_RETRIES"] = str(args.llm_max_retries)
     if args.llm_min_request_interval_seconds is not None:
@@ -122,6 +159,10 @@ def main() -> None:
         os.environ["SREZERO_LLM_REJECTION_PAUSE_SECONDS"] = str(
             args.llm_rejection_pause_seconds
         )
+    if args.llm_reasoning_exclude is not None:
+        os.environ["SREZERO_LLM_REASONING_EXCLUDE"] = str(args.llm_reasoning_exclude)
+    if args.llm_qwen_no_think is not None:
+        os.environ["SREZERO_LLM_QWEN_NO_THINK"] = str(args.llm_qwen_no_think)
 
     console = Console()
     plan = build_plan(args)
@@ -142,6 +183,7 @@ def main() -> None:
 
     runs: list[dict[str, Any]] = []
     mark_rows: list[dict[str, Any]] = []
+    difficulty_mark_rows: list[dict[str, Any]] = []
     run_files: list[dict[str, str]] = []
     status = "complete"
     pause_file = None if args.no_pause_file else args.pause_file
@@ -176,6 +218,9 @@ def main() -> None:
                     runs.append(result)
                     mark_row = make_mark_row(result, target_steps=args.target_steps)
                     mark_rows.append(mark_row)
+                    difficulty_mark_rows.extend(
+                        make_difficulty_mark_rows(result, target_steps=args.target_steps)
+                    )
                     run_files.append(run_file_row(item, output_path))
                     progress.update(run_task, completed=run_total)
                     progress.update(sweep_task, advance=1)
@@ -230,6 +275,9 @@ def main() -> None:
                 runs.append(result)
                 mark_row = make_mark_row(result, target_steps=args.target_steps)
                 mark_rows.append(mark_row)
+                difficulty_mark_rows.extend(
+                    make_difficulty_mark_rows(result, target_steps=args.target_steps)
+                )
                 run_files.append(run_file_row(item, output_path))
                 completed_episodes = int(result.get("completed_task_episodes", run_total))
                 progress.update(run_task, completed=min(run_total, completed_episodes))
@@ -256,6 +304,9 @@ def main() -> None:
         append_log(log_path, interrupt_message)
 
     mark_rows.sort(key=lambda row: row["score"], reverse=True)
+    difficulty_mark_rows.sort(
+        key=lambda row: (str(row["difficulty"]), -float(row["score"]))
+    )
     summary = {
         "schema_version": 1,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -275,12 +326,15 @@ def main() -> None:
             "llm_episodes": args.llm_episodes,
             "base_url_override": bool(args.base_url),
             "timeout_seconds": args.timeout_seconds,
+            "llm_max_tokens": args.llm_max_tokens,
             "llm_max_retries": args.llm_max_retries,
             "llm_min_request_interval_seconds": args.llm_min_request_interval_seconds,
             "llm_rate_limit_requests": args.llm_rate_limit_requests,
             "llm_rate_limit_window_seconds": args.llm_rate_limit_window_seconds,
             "llm_rejection_pause_threshold": args.llm_rejection_pause_threshold,
             "llm_rejection_pause_seconds": args.llm_rejection_pause_seconds,
+            "llm_reasoning_exclude": args.llm_reasoning_exclude,
+            "llm_qwen_no_think": args.llm_qwen_no_think,
         },
         "model_sets": model_sets_from_args(args),
         "marks_formula": {
@@ -297,6 +351,10 @@ def main() -> None:
             "by_baseline": group_marks_by_baseline(mark_rows),
             "pairwise_deltas": pairwise_deltas_by_baseline(mark_rows),
         },
+        "difficulty_marks": {
+            "rows": difficulty_mark_rows,
+            "by_difficulty": group_marks_by_difficulty(difficulty_mark_rows),
+        },
         "run_files": run_files,
         "runs": runs,
     }
@@ -304,6 +362,7 @@ def main() -> None:
     args.summary_output.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     append_log(log_path, f"SUMMARY output={args.summary_output}")
     print_marks(mark_rows, args.summary_output)
+    print_difficulty_marks(difficulty_mark_rows)
     if log_path is not None:
         console.print(f"Wrote run log to {log_path}")
 
@@ -384,6 +443,12 @@ def parse_args() -> argparse.Namespace:
         help="Set SREZERO_LLM_TIMEOUT_SECONDS for this run.",
     )
     parser.add_argument(
+        "--llm-max-tokens",
+        type=int,
+        default=None,
+        help="Set SREZERO_LLM_MAX_TOKENS for provider completions.",
+    )
+    parser.add_argument(
         "--llm-max-retries",
         type=int,
         default=None,
@@ -420,6 +485,18 @@ def parse_args() -> argparse.Namespace:
         help="Pause this many seconds after the rejection threshold is hit.",
     )
     parser.add_argument(
+        "--llm-reasoning-exclude",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Ask OpenRouter-compatible providers not to return reasoning payloads.",
+    )
+    parser.add_argument(
+        "--llm-qwen-no-think",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Append /no_think to Qwen model prompts.",
+    )
+    parser.add_argument(
         "--prompting-models",
         nargs="*",
         default=None,
@@ -436,6 +513,18 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         default=None,
         help="Models for the open_source baseline.",
+    )
+    parser.add_argument(
+        "--open-source-react-models",
+        nargs="*",
+        default=None,
+        help="Models for the open_source_react baseline.",
+    )
+    parser.add_argument(
+        "--guided-open-source-models",
+        nargs="*",
+        default=None,
+        help="Models for the guided_open_source baseline.",
     )
     parser.add_argument(
         "--frontier-models",
@@ -604,6 +693,8 @@ def model_sets_from_args(args: argparse.Namespace) -> dict[str, list[str]]:
             "prompting": shared,
             "react": shared,
             "open_source": shared,
+            "open_source_react": shared,
+            "guided_open_source": shared,
             "frontier": shared,
         }
     defaults = default_model_sets(args.preset)
@@ -611,6 +702,12 @@ def model_sets_from_args(args: argparse.Namespace) -> dict[str, list[str]]:
         "prompting": clean_models(args.prompting_models or defaults["prompting"]),
         "react": clean_models(args.react_models or defaults["react"]),
         "open_source": clean_models(args.open_source_models or defaults["open_source"]),
+        "open_source_react": clean_models(
+            args.open_source_react_models or defaults["open_source_react"]
+        ),
+        "guided_open_source": clean_models(
+            args.guided_open_source_models or defaults["guided_open_source"]
+        ),
         "frontier": clean_models(args.frontier_models or defaults["frontier"]),
     }
 
@@ -621,12 +718,16 @@ def default_model_sets(preset: str) -> dict[str, tuple[str, ...]]:
             "prompting": QUICK_PROMPTING_MODELS,
             "react": QUICK_REACT_MODELS,
             "open_source": QUICK_OPEN_SOURCE_MODELS,
+            "open_source_react": QUICK_OPEN_SOURCE_REACT_MODELS,
+            "guided_open_source": QUICK_GUIDED_OPEN_SOURCE_MODELS,
             "frontier": QUICK_FRONTIER_MODELS,
         }
     return {
         "prompting": PAPER_PROMPTING_MODELS,
         "react": PAPER_REACT_MODELS,
         "open_source": PAPER_OPEN_SOURCE_MODELS,
+        "open_source_react": PAPER_OPEN_SOURCE_REACT_MODELS,
+        "guided_open_source": PAPER_GUIDED_OPEN_SOURCE_MODELS,
         "frontier": PAPER_FRONTIER_MODELS,
     }
 
@@ -750,10 +851,12 @@ def expected_episode_keys(
     difficulty: str | None,
     task_ids_override: list[str] | None,
 ) -> set[tuple[str, int]]:
-    task_ids = task_ids_override or list_task_ids(difficulty=cast(Difficulty | None, difficulty))
+    all_task_ids = list_task_ids(difficulty=cast(Difficulty | None, difficulty))
+    task_ids = task_ids_override or all_task_ids
+    task_seed_indexes = {task_id: index for index, task_id in enumerate(all_task_ids)}
     return {
-        (task_id, seed + task_index * 10_000 + episode_index)
-        for task_index, task_id in enumerate(task_ids)
+        (task_id, seed + task_seed_indexes[task_id] * 10_000 + episode_index)
+        for task_id in task_ids
         for episode_index in range(episodes)
     }
 

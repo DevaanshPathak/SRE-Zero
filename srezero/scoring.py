@@ -23,6 +23,11 @@ PAPER_METRIC_KEYS = (
     "wrong_remediation_rate",
     "distractor_failure_rate",
     "premature_resolution_rate",
+    "root_cause_identification_rate",
+    "fix_identification_rate",
+    "correct_service_remediation_rate",
+    "correct_remediation_rate",
+    "remediation_precision",
 )
 
 ZERO_METRICS = {
@@ -34,6 +39,11 @@ ZERO_METRICS = {
     "wrong_remediation_rate": 0.0,
     "distractor_failure_rate": 0.0,
     "premature_resolution_rate": 0.0,
+    "root_cause_identification_rate": 0.0,
+    "fix_identification_rate": 0.0,
+    "correct_service_remediation_rate": 0.0,
+    "correct_remediation_rate": 0.0,
+    "remediation_precision": 0.0,
 }
 
 
@@ -85,4 +95,3 @@ def metric(overall: Mapping[str, object], key: str) -> float:
     if isinstance(value, int | float):
         return float(value)
     return 0.0
-

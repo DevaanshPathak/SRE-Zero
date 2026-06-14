@@ -107,6 +107,98 @@ class OpenSourceLLMBaselineAgent(PromptingBaselineAgent):
         super().__init__(profile="open_source", config=config)
 
 
+class OpenSourceReActLLMBaselineAgent(ReActBaselineAgent):
+    """ReAct loop using the open-source model profile."""
+
+    def __init__(self, *, config: LLMConfig | None = None) -> None:
+        super().__init__(profile="open_source", config=config)
+
+
+class GuidedOpenSourceLLMBaselineAgent:
+    """Open-source LLM baseline with a small protocol controller.
+
+    The controller does not inspect hidden task state. It enforces the public action
+    contract, asks for evidence before remediation while budget allows, and blocks
+    final resolution until the agent has attempted a remediation.
+    """
+
+    def __init__(self, *, config: LLMConfig | None = None, max_repairs: int = 2) -> None:
+        self.config = config or LLMConfig.from_env("open_source")
+        self.client = OpenAICompatibleChatClient(self.config)
+        self.max_repairs = max_repairs
+        self.messages: list[dict[str, str]] = []
+        self.remediation_attempted = False
+
+    def reset(self) -> None:
+        self.remediation_attempted = False
+        self.messages = [
+            {
+                "role": "system",
+                "content": (
+                    f"{template_for_profile('react').system}\n\n"
+                    "Controller policy: output exactly one valid SRE-Zero Action line. "
+                    "Gather at least two pieces of evidence before remediation when step "
+                    "budget allows. Do not call resolve_incident until after a remediation "
+                    "action has been attempted."
+                ),
+            }
+        ]
+
+    def act(self, observation: Observation) -> Action | str:
+        if not self.messages:
+            self.reset()
+        prompt = (
+            f"{template_for_profile('react').user_message(observation)}\n\n"
+            f"Known findings count: {len(observation.known_findings)}.\n"
+            f"Remediation attempted: {self.remediation_attempted}.\n"
+            "Respond with one brief Thought and one Action."
+        )
+        self.messages.append({"role": "user", "content": prompt})
+        for _ in range(self.max_repairs + 1):
+            response = self.client.complete(self.messages)
+            self.messages.append({"role": "assistant", "content": response})
+            candidate = _extract_action(response, observation)
+            action = _as_action(candidate)
+            violation = self._guided_violation(action, observation)
+            if violation is None and action is not None:
+                self._record_guided_action(action)
+                return action
+            self.messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Previous output rejected: {violation}. "
+                        "Return exactly one valid SRE-Zero action call now."
+                    ),
+                }
+            )
+
+        fallback = _guided_fallback_action(observation, self.remediation_attempted)
+        self._record_guided_action(fallback)
+        return fallback
+
+    def _guided_violation(
+        self,
+        action: Action | None,
+        observation: Observation,
+    ) -> str | None:
+        if action is None:
+            return "malformed or unsupported action"
+        if _needs_more_evidence(observation) and action.action_type in {
+            "restart_service",
+            "update_config",
+            "resolve_incident",
+        }:
+            return "gather evidence before remediation or resolution"
+        if action.action_type == "resolve_incident" and not self.remediation_attempted:
+            return "resolve_incident is only allowed after a remediation attempt"
+        return None
+
+    def _record_guided_action(self, action: Action) -> None:
+        if action.action_type in {"restart_service", "update_config"}:
+            self.remediation_attempted = True
+
+
 class FrontierLLMBaselineAgent(ReActBaselineAgent):
     """ReAct baseline profile intended for frontier hosted models."""
 
@@ -143,6 +235,34 @@ def _normalize_or_return(candidate: str) -> Action | str:
         return parse_action(candidate)
     except ValueError:
         return candidate
+
+
+def _as_action(candidate: Action | str) -> Action | None:
+    if isinstance(candidate, Action):
+        return candidate
+    try:
+        parsed = parse_action(candidate)
+    except ValueError:
+        return None
+    return parsed
+
+
+def _needs_more_evidence(observation: Observation) -> bool:
+    return len(observation.known_findings) < 2 and observation.steps_remaining > 3
+
+
+def _guided_fallback_action(
+    observation: Observation,
+    remediation_attempted: bool,
+) -> Action:
+    service = _infer_service(observation) or "web_server"
+    if _needs_more_evidence(observation):
+        action_cycle = ("check_status", "inspect_logs", "inspect_metrics", "inspect_config")
+        action_name = action_cycle[observation.step % len(action_cycle)]
+        return parse_action(f"{action_name}({service})")
+    if not remediation_attempted:
+        return parse_action(f"inspect_config({service})")
+    return parse_action(f"inspect_metrics({service})")
 
 
 def _repair_bare_evidence_action(
